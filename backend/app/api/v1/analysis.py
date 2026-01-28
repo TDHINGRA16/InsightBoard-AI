@@ -32,8 +32,15 @@ async def start_analysis(
     Uses LLM to extract tasks and dependencies.
     The analysis runs in the background - poll /jobs/{job_id} for status.
 
-    Idempotency key prevents duplicate analysis jobs.
+    Idempotency Logic:
+    - If no existing job with same key: start new analysis
+    - If existing job is QUEUED or PROCESSING: return existing job
+    - If existing job is COMPLETED or FAILED and force=True: delete old tasks and re-analyze
+    - If existing job is COMPLETED or FAILED and force=False: return existing job
     """
+    from app.models.dependency import Dependency
+    from app.models.task import Task
+
     # Verify transcript ownership
     transcript = (
         db.query(Transcript)
@@ -51,16 +58,50 @@ async def start_analysis(
     exists, existing_job = check_idempotency(db, request.idempotency_key)
 
     if exists and existing_job:
-        return AnalysisStartResponse(
-            success=True,
-            job_id=existing_job.id,
-            is_existing=True,
-            message="Analysis job already exists",
-            data={
-                "status": existing_job.status.value,
-                "progress": existing_job.progress,
-            },
+        # Check if job is still running
+        if existing_job.status in [JobStatus.QUEUED, JobStatus.PROCESSING]:
+            # Return existing running job - true idempotency
+            return AnalysisStartResponse(
+                success=True,
+                job_id=existing_job.id,
+                is_existing=True,
+                message="Analysis job already in progress",
+                data={
+                    "status": existing_job.status.value,
+                    "progress": existing_job.progress,
+                },
+            )
+
+        # Job is completed or failed
+        if not request.force:
+            # Return existing completed job without re-processing
+            return AnalysisStartResponse(
+                success=True,
+                job_id=existing_job.id,
+                is_existing=True,
+                message="Analysis already completed. Use force=true to re-analyze.",
+                data={
+                    "status": existing_job.status.value,
+                    "progress": existing_job.progress,
+                    "can_reanalyze": True,
+                },
+            )
+
+        # Force re-analysis: Delete old tasks and dependencies for this transcript
+        # Dependencies are cascade deleted with tasks, but be explicit
+        db.query(Dependency).filter(
+            Dependency.task_id.in_(
+                db.query(Task.id).filter(Task.transcript_id == request.transcript_id)
+            )
+        ).delete(synchronize_session=False)
+
+        db.query(Task).filter(Task.transcript_id == request.transcript_id).delete(
+            synchronize_session=False
         )
+
+        # Delete the old job to allow new idempotency key
+        db.delete(existing_job)
+        db.commit()
 
     # Generate job ID
     job_id = generate_job_id("analyze", request.transcript_id)
@@ -93,7 +134,7 @@ async def start_analysis(
         success=True,
         job_id=job_id,
         is_existing=False,
-        message="Analysis job started",
+        message="Analysis job started" if not request.force else "Re-analysis job started",
         data={
             "status": "queued",
             "progress": 0,

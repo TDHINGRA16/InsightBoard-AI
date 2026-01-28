@@ -66,7 +66,7 @@ export const api = {
     }) => apiClient.get("/tasks", { params }),
     getTask: (id: string) => apiClient.get(`/tasks/${id}`),
     createTask: (data: any) => apiClient.post("/tasks", data),
-    updateTask: (id: string, data: any) => apiClient.patch(`/tasks/${id}`, data),
+    updateTask: (id: string, data: any) => apiClient.put(`/tasks/${id}`, data),
     deleteTask: (id: string) => apiClient.delete(`/tasks/${id}`),
 
     // Dependencies
@@ -77,16 +77,20 @@ export const api = {
     deleteDependency: (id: string) => apiClient.delete(`/dependencies/${id}`),
 
     // Analysis
-    startAnalysis: (transcriptId: string, idempotencyKey?: string) => {
-        const key = idempotencyKey || `analyze-${transcriptId}-${Date.now()}`;
+    startAnalysis: (transcriptId: string, options?: { force?: boolean; idempotencyKey?: string }) => {
+        // Use stable key based on transcript ID for true idempotency
+        // When force=true, generate a unique key to allow re-analysis
+        const key = options?.idempotencyKey
+            || (options?.force ? `analyze-${transcriptId}-${Date.now()}` : `analyze-${transcriptId}`);
 
         return apiClient.post("/analysis/start", {
             transcript_id: transcriptId,
             idempotency_key: key,
+            force: options?.force || false,
         });
     },
     retryAnalysis: (transcriptId: string) =>
-        apiClient.post(`/analysis/${transcriptId}/retry`),
+        apiClient.post(`/analysis/retry/${transcriptId}`),
 
     // Jobs
     getJobs: (params?: { status?: string; transcript_id?: string }) =>
@@ -97,7 +101,7 @@ export const api = {
     // Graphs
     getGraph: (transcriptId: string) => apiClient.get(`/graphs/${transcriptId}`),
     getGraphVisualization: (transcriptId: string) =>
-        apiClient.get(`/graphs/${transcriptId}/react-flow`),
+        apiClient.get(`/graphs/${transcriptId}`),
     getCriticalPath: (transcriptId: string) =>
         apiClient.get(`/graphs/${transcriptId}/critical-path`),
     getBottlenecks: (transcriptId: string) =>

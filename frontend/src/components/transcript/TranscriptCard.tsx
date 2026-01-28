@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
-import { FileText, MoreVertical, Eye, Trash2, Play } from "lucide-react";
+import { FileText, MoreVertical, Eye, Trash2, Play, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ interface TranscriptCardProps {
     transcript: Transcript;
     onDelete?: (id: string) => void;
     onAnalyze?: (id: string) => void;
+    onReanalyze?: (id: string) => void;
 }
 
 const statusColors: Record<TranscriptStatus, string> = {
@@ -39,10 +40,13 @@ export function TranscriptCard({
     transcript,
     onDelete,
     onAnalyze,
+    onReanalyze,
 }: TranscriptCardProps) {
     const canAnalyze =
         transcript.status === TranscriptStatus.UPLOADED ||
         transcript.status === TranscriptStatus.FAILED;
+
+    const canReanalyze = transcript.status === TranscriptStatus.ANALYZED;
 
     return (
         <Card className="hover:shadow-md transition-shadow">
@@ -83,6 +87,12 @@ export function TranscriptCard({
                             <DropdownMenuItem onClick={() => onAnalyze(transcript.id)}>
                                 <Play className="h-4 w-4 mr-2" />
                                 Start Analysis
+                            </DropdownMenuItem>
+                        )}
+                        {canReanalyze && onReanalyze && (
+                            <DropdownMenuItem onClick={() => onReanalyze(transcript.id)}>
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                                Re-analyze
                             </DropdownMenuItem>
                         )}
                         {onDelete && (

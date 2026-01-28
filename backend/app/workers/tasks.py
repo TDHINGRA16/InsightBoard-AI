@@ -71,6 +71,19 @@ def analyze_transcript_job(
         transcript.status = TranscriptStatus.ANALYZING
         db.commit()
 
+        # Remove any existing tasks/dependencies for this transcript so
+        # re-analysis replaces previous extraction instead of appending.
+        try:
+            existing_count = db.query(Task).filter(Task.transcript_id == transcript_id).count()
+            if existing_count:
+                logger.info(
+                    f"Deleting {existing_count} existing tasks (and cascaded dependencies) for transcript {transcript_id}"
+                )
+                # Bulk delete tasks; DB-level ON DELETE CASCADE will remove dependencies.
+                db.query(Task).filter(Task.transcript_id == transcript_id).delete(synchronize_session=False)
+                db.commit()
+        except Exception as e:
+            logger.warning(f"Failed to clear existing tasks for transcript {transcript_id}: {e}")
         # Progress: Fetched transcript
         _update_progress(db, job_id, 20)
 
@@ -121,12 +134,21 @@ def analyze_transcript_job(
 
         db.commit()
         logger.info(f"Created {len(created_tasks)} tasks")
+        
+        # Log task titles for debugging dependency matching
+        logger.debug(f"Task title mapping: {list(task_title_to_id.keys())}")
 
         # Progress: Tasks created
         _update_progress(db, job_id, 70)
 
         # Create dependencies
         dependencies_data = extraction_result.get("dependencies", [])
+        logger.info(f"LLM extracted {len(dependencies_data)} raw dependencies")
+        
+        # Log raw dependency data for debugging
+        for dep in dependencies_data:
+            logger.debug(f"Raw dependency: {dep}")
+        
         dependency_service = DependencyService(db)
 
         created_deps = dependency_service.bulk_create_dependencies(
@@ -134,7 +156,7 @@ def analyze_transcript_job(
             task_title_to_id,
         )
 
-        logger.info(f"Created {len(created_deps)} dependencies")
+        logger.info(f"Successfully created {len(created_deps)} dependencies in database")
 
         # Progress: Dependencies created
         _update_progress(db, job_id, 80)
@@ -193,9 +215,10 @@ def analyze_transcript_job(
         # Cache analysis result
         cache_service.cache_analysis(transcript_id, result)
 
-        # Update transcript status
+        # Update transcript status (clear any previous error)
         transcript.status = TranscriptStatus.ANALYZED
         transcript.analysis_result = result
+        transcript.error_message = None  # Clear stale error from previous failed attempts
         db.commit()
 
         # Update job as completed

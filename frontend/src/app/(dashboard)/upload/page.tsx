@@ -21,7 +21,8 @@ export default function UploadPage() {
     // Start analysis mutation
     const startAnalysisMutation = useMutation({
         mutationFn: async (transcriptId: string) => {
-            const response = await api.startAnalysis(transcriptId);
+            // Always use force=true to regenerate tasks if re-submitted
+            const response = await api.startAnalysis(transcriptId, { force: true });
             return response.data;
         },
         onSuccess: (data) => {
@@ -102,13 +103,7 @@ export default function UploadPage() {
                 <AnalysisProgress
                     jobId={jobId}
                     onComplete={handleAnalysisComplete}
-                    onError={(error) =>
-                        toast.error(
-                            typeof error === "string"
-                                ? error
-                                : error?.message || "Analysis failed"
-                        )
-                    }
+                    onError={(error) => toast.error(error)}
                 />
             )}
         </div>

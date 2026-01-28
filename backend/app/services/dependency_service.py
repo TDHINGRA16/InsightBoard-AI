@@ -438,28 +438,66 @@ class DependencyService:
         """
         Bulk create dependencies from LLM extraction.
 
+        Uses fuzzy matching to handle slight variations in task titles.
+
         Args:
             dependencies_data: List of dependency dicts with titles
-            task_title_to_id: Mapping from task title to ID
+            task_title_to_id: Mapping from task title (lowercase) to ID
 
         Returns:
             List[Dependency]: Created dependencies
         """
         created = []
 
+        def find_task_id(title: str) -> Optional[str]:
+            """Find task ID with fuzzy matching."""
+            if not title:
+                return None
+                
+            normalized = title.lower().strip()
+            
+            # Exact match first
+            if normalized in task_title_to_id:
+                return task_title_to_id[normalized]
+            
+            # Try substring match (task title contains search or vice versa)
+            for existing_title, task_id in task_title_to_id.items():
+                # Check if one contains the other (more than 50% match)
+                if normalized in existing_title or existing_title in normalized:
+                    logger.debug(f"Fuzzy matched '{title}' -> '{existing_title}'")
+                    return task_id
+                    
+                # Check word overlap for longer titles
+                search_words = set(normalized.split())
+                existing_words = set(existing_title.split())
+                if len(search_words) >= 2 and len(existing_words) >= 2:
+                    overlap = len(search_words & existing_words)
+                    if overlap >= min(len(search_words), len(existing_words)) * 0.5:
+                        logger.debug(f"Word-matched '{title}' -> '{existing_title}'")
+                        return task_id
+            
+            return None
+
         for dep_data in dependencies_data:
             task_title = dep_data.get("task_title", "")
             depends_on_title = dep_data.get("depends_on_title", "")
 
-            # Look up IDs
-            task_id = task_title_to_id.get(task_title.lower())
-            depends_on_id = task_title_to_id.get(depends_on_title.lower())
+            # Look up IDs with fuzzy matching
+            task_id = find_task_id(task_title)
+            depends_on_id = find_task_id(depends_on_title)
 
-            if not task_id or not depends_on_id:
-                logger.warning(f"Could not find tasks for dependency: {dep_data}")
+            if not task_id:
+                logger.warning(f"Could not find task: '{task_title}'")
+                logger.debug(f"Available titles: {list(task_title_to_id.keys())}")
+                continue
+                
+            if not depends_on_id:
+                logger.warning(f"Could not find depends_on task: '{depends_on_title}'")
+                logger.debug(f"Available titles: {list(task_title_to_id.keys())}")
                 continue
 
             if task_id == depends_on_id:
+                logger.warning(f"Self-dependency skipped: {task_title}")
                 continue
 
             # Check for existing
@@ -473,6 +511,7 @@ class DependencyService:
             )
 
             if existing:
+                logger.debug(f"Dependency already exists: {depends_on_title} -> {task_title}")
                 continue
 
             dependency = Dependency(
@@ -484,6 +523,7 @@ class DependencyService:
 
             self.db.add(dependency)
             created.append(dependency)
+            logger.info(f"Creating dependency: '{depends_on_title}' BLOCKS '{task_title}'")
 
         if created:
             self.db.commit()

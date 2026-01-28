@@ -37,7 +37,8 @@ export default function TranscriptsPage() {
 
     const startAnalysisMutation = useMutation({
         mutationFn: async (id: string) => {
-            const response = await api.startAnalysis(id);
+            // Always force to handle idempotency - regenerate tasks if re-submitted
+            const response = await api.startAnalysis(id, { force: true });
             return response.data;
         },
         onSuccess: () => {
@@ -46,6 +47,21 @@ export default function TranscriptsPage() {
         },
         onError: (error: any) => {
             toast.error(error.response?.data?.detail || "Failed to start analysis");
+        },
+    });
+
+    const reanalyzeMutation = useMutation({
+        mutationFn: async (id: string) => {
+            // Use force=true to regenerate tasks even if already analyzed
+            const response = await api.startAnalysis(id, { force: true });
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["transcripts"] });
+            toast.success("Re-analysis started! Old tasks will be replaced.");
+        },
+        onError: (error: any) => {
+            toast.error(error.response?.data?.detail || "Failed to start re-analysis");
         },
     });
 
@@ -90,6 +106,7 @@ export default function TranscriptsPage() {
                             transcript={transcript}
                             onDelete={(id) => deleteTranscriptMutation.mutate(id)}
                             onAnalyze={(id) => startAnalysisMutation.mutate(id)}
+                            onReanalyze={(id) => reanalyzeMutation.mutate(id)}
                         />
                     ))}
                 </div>

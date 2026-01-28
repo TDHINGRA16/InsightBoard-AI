@@ -18,7 +18,8 @@ export default function GraphPage() {
         queryKey: ["graph", "visualization", transcriptId],
         queryFn: async () => {
             const response = await api.getGraphVisualization(transcriptId);
-            return response.data.data;
+            // Backend returns { success, data: { nodes, edges }, metrics, transcript_id }
+            return response.data?.data || { nodes: [], edges: [] };
         },
     });
 
@@ -27,7 +28,8 @@ export default function GraphPage() {
         queryKey: ["graph", "critical-path", transcriptId],
         queryFn: async () => {
             const response = await api.getCriticalPath(transcriptId);
-            return response.data.data;
+            // Returns { success, critical_path: [...], ... } - no nested data
+            return response.data || { critical_path: [] };
         },
     });
 

@@ -17,6 +17,10 @@ class AnalysisStartRequest(BaseModel):
     idempotency_key: str = Field(
         ..., description="Unique key for idempotent analysis requests"
     )
+    force: bool = Field(
+        default=False,
+        description="If true, regenerate tasks even if analysis was completed",
+    )
 
 
 class AnalysisStartResponse(BaseModel):
