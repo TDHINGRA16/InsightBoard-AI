@@ -49,7 +49,7 @@ async def get_current_user(
     token = credentials.credentials
 
     # Verify token and extract payload
-    payload = verify_supabase_token(token)
+    payload = await verify_supabase_token(token)
     user_info = extract_user_from_token(payload)
 
     # Upsert profile on first login

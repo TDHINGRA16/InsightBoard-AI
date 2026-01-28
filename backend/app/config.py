@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     # Supabase (optional for local dev)
     SUPABASE_URL: Optional[str] = None
     SUPABASE_JWT_SECRET: str = "dev-secret-key"
+    SUPABASE_ANON_KEY: Optional[str] = None
 
     # CORS - stored as comma-separated string, parsed as list
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:5173"
