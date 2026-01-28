@@ -12,6 +12,7 @@ from app.core.exceptions import CyclicDependencyError, NotFoundError, Validation
 from app.core.logging import get_logger
 from app.models.dependency import Dependency, DependencyType
 from app.models.task import Task
+from app.models.transcript import Transcript
 
 logger = get_logger(__name__)
 
@@ -205,6 +206,28 @@ class DependencyService:
         )
 
         return dependencies
+
+    def list_dependencies_for_user(self, user_id: str) -> List[Dependency]:
+        """
+        List all dependencies across all transcripts owned by a user.
+
+        Args:
+            user_id: UUID of the user
+
+        Returns:
+            List[Dependency]: Dependencies with loaded task titles
+        """
+        return (
+            self.db.query(Dependency)
+            .join(Task, Dependency.task_id == Task.id)
+            .join(Transcript, Task.transcript_id == Transcript.id)
+            .options(
+                joinedload(Dependency.task),
+                joinedload(Dependency.depends_on_task),
+            )
+            .filter(Transcript.user_id == user_id)
+            .all()
+        )
 
     def build_dependency_graph(
         self,

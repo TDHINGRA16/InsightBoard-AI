@@ -55,7 +55,12 @@ class Dependency(Base):
         comment="The task being depended upon",
     )
     dependency_type: Mapped[DependencyType] = mapped_column(
-        Enum(DependencyType),
+        # Persist enum *values* (e.g. "blocks") rather than names ("BLOCKS")
+        # to match existing Postgres enum values.
+        Enum(
+            DependencyType,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         default=DependencyType.BLOCKS,
         nullable=False,
     )

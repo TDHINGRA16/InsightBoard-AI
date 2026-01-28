@@ -59,15 +59,25 @@ async def get_current_user(
     profile = db.query(Profile).filter(Profile.id == user_id).first()
 
     if not profile and email:
-        # Create profile for new user
-        profile = Profile(
-            id=user_id,
-            email=email,
-            full_name=user_info.get("user_metadata", {}).get("full_name", ""),
-        )
-        db.add(profile)
-        db.commit()
-        db.refresh(profile)
+        # Check if email exists (handle stale local DB state where ID changed but email persists)
+        existing_profile = db.query(Profile).filter(Profile.email == email).first()
+        
+        if existing_profile:
+            if str(existing_profile.id) != str(user_id):
+                existing_profile.id = user_id
+                db.commit()
+                db.refresh(existing_profile)
+            profile = existing_profile
+        else:
+            # Create profile for new user
+            profile = Profile(
+                id=user_id,
+                email=email,
+                full_name=user_info.get("user_metadata", {}).get("full_name", ""),
+            )
+            db.add(profile)
+            db.commit()
+            db.refresh(profile)
 
     return CurrentUser(
         id=user_id,

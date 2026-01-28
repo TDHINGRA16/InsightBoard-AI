@@ -62,11 +62,19 @@ class Job(Base):
         index=True,
     )
     job_type: Mapped[JobType] = mapped_column(
-        Enum(JobType),
+        Enum(
+            JobType,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            name="jobtype",
+        ),
         nullable=False,
     )
     status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus),
+        Enum(
+            JobStatus,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            name="jobstatus",
+        ),
         default=JobStatus.QUEUED,
         nullable=False,
         index=True,

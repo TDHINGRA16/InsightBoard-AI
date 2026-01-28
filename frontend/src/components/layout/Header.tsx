@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Bell, LogOut, User, Settings } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 export default function Header() {
     const { user, signOut } = useAuth();

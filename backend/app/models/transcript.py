@@ -75,7 +75,11 @@ class Transcript(Base):
         comment="SHA-256 hash for deduplication",
     )
     status: Mapped[TranscriptStatus] = mapped_column(
-        Enum(TranscriptStatus),
+        Enum(
+            TranscriptStatus,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+            name="transcriptstatus",
+        ),
         default=TranscriptStatus.UPLOADED,
         nullable=False,
         index=True,

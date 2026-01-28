@@ -75,8 +75,8 @@ async def list_dependencies(
         deps, dependents = service.get_task_dependencies(task_id)
         dependencies = deps + dependents
     else:
-        # Return empty - must filter
-        dependencies = []
+        # Default: list all dependencies across user's transcripts
+        dependencies = service.list_dependencies_for_user(str(current_user.id))
 
     return DependencyListResponse(
         success=True,

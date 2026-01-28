@@ -8,7 +8,7 @@ import { FileUpload, AnalysisProgress } from "@/components/transcript";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Play, GitBranch } from "lucide-react";
 
 export default function UploadPage() {
@@ -102,7 +102,13 @@ export default function UploadPage() {
                 <AnalysisProgress
                     jobId={jobId}
                     onComplete={handleAnalysisComplete}
-                    onError={(error) => toast.error(error)}
+                    onError={(error) =>
+                        toast.error(
+                            typeof error === "string"
+                                ? error
+                                : error?.message || "Analysis failed"
+                        )
+                    }
                 />
             )}
         </div>

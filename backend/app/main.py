@@ -76,6 +76,30 @@ def create_app() -> FastAPI:
             },
         )
 
+    # Debug endpoint for JWKS keys
+    @app.get("/debug/keys", tags=["Debug"])
+    async def debug_keys():
+        """Debug endpoint to check fetched JWKS keys."""
+        if not settings.DEBUG:
+            return {"error": "Debug mode not enabled"}
+            
+        from app.core.security import jwks_client
+        jwks = await jwks_client.get_jwks()
+        return {
+            "source": "Supabase JWKS",
+            "cached": True,
+            "jwks_url": jwks_client.jwks_url,
+            "keys": [
+                {
+                    "kid": k.get("kid"),
+                    "alg": k.get("alg"),
+                    "kty": k.get("kty"),
+                    "crv": k.get("crv") 
+                }
+                for k in jwks.get("keys", [])
+            ]
+        }
+
     # Root endpoint
     @app.get("/", tags=["Root"])
     async def root():

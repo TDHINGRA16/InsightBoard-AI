@@ -53,6 +53,8 @@ export interface Dependency {
     dependency_type: DependencyType;
     lag_days: number;
     created_at: string;
+    task_title?: string;
+    depends_on_title?: string;
     task?: Task;
     depends_on_task?: Task;
 }

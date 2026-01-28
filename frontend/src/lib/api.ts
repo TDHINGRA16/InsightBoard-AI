@@ -77,11 +77,14 @@ export const api = {
     deleteDependency: (id: string) => apiClient.delete(`/dependencies/${id}`),
 
     // Analysis
-    startAnalysis: (transcriptId: string, idempotencyKey?: string) =>
-        apiClient.post("/analysis/start", {
+    startAnalysis: (transcriptId: string, idempotencyKey?: string) => {
+        const key = idempotencyKey || `analyze-${transcriptId}-${Date.now()}`;
+
+        return apiClient.post("/analysis/start", {
             transcript_id: transcriptId,
-            idempotency_key: idempotencyKey,
-        }),
+            idempotency_key: key,
+        });
+    },
     retryAnalysis: (transcriptId: string) =>
         apiClient.post(`/analysis/${transcriptId}/retry`),
 

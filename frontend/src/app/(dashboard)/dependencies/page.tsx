@@ -81,16 +81,20 @@ function DependencyCard({ dependency }: { dependency: Dependency }) {
                             href={`/tasks/${dependency.depends_on_task_id}`}
                             className="block text-sm font-medium hover:text-primary truncate"
                         >
-                            {dependency.depends_on_task?.title || "Task"}
+                            {dependency.depends_on_task?.title ||
+                                dependency.depends_on_title ||
+                                "Task"}
                         </Link>
                     </div>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
                         <Link
                             href={`/tasks/${dependency.task_id}`}
                             className="block text-sm font-medium hover:text-primary truncate"
                         >
-                            {dependency.task?.title || "Task"}
+                            {dependency.task?.title ||
+                                dependency.task_title ||
+                                "Task"}
                         </Link>
                     </div>
                 </div>

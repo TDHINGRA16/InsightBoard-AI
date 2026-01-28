@@ -19,7 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { Loader2 } from "lucide-react";
 
 const signupSchema = z.object({

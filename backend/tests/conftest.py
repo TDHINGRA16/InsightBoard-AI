@@ -138,12 +138,15 @@ def mock_groq():
     """
     with patch("app.services.nlp_service.Groq") as mock:
         mock_client = MagicMock()
-        mock_response = MagicMock()
-        mock_response.choices = [
+        mock_response = [
             MagicMock(
-                message=MagicMock(
-                    content='{"tasks": [{"title": "Test Task", "priority": "high"}], "dependencies": []}'
-                )
+                choices=[
+                    MagicMock(
+                        delta=MagicMock(
+                            content='{"tasks": [{"title": "Test Task", "priority": "high"}], "dependencies": []}'
+                        )
+                    )
+                ]
             )
         ]
         mock_client.chat.completions.create.return_value = mock_response

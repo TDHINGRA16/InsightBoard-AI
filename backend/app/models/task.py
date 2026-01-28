@@ -78,12 +78,20 @@ class Task(Base):
         nullable=True,
     )
     priority: Mapped[TaskPriority] = mapped_column(
-        Enum(TaskPriority),
+        # Persist enum *values* (e.g. "critical") rather than names ("CRITICAL")
+        # to match existing Postgres enum values.
+        Enum(
+            TaskPriority,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         default=TaskPriority.MEDIUM,
         nullable=False,
     )
     status: Mapped[TaskStatus] = mapped_column(
-        Enum(TaskStatus),
+        Enum(
+            TaskStatus,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         default=TaskStatus.PENDING,
         nullable=False,
     )

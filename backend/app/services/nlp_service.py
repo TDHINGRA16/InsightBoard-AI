@@ -6,8 +6,6 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from groq import Groq
-
 from app.config import settings
 from app.core.exceptions import LLMError
 from app.core.logging import get_logger
@@ -21,25 +19,25 @@ EXTRACTION_PROMPT = """You are an expert project manager analyzing a project tra
 Extract ALL tasks, deadlines, priorities, assignees, and dependencies from the following transcript.
 
 Return ONLY valid JSON in this exact format (no markdown, no code blocks):
-{
+{{
   "tasks": [
-    {
+    {{
       "title": "Short task title (max 100 chars)",
       "description": "Detailed description of what needs to be done",
       "deadline": "2026-02-20T00:00:00Z or null if not specified",
       "priority": "low|medium|high|critical",
       "assignee": "Person's name or null if not specified",
       "estimated_hours": 8
-    }
+    }}
   ],
   "dependencies": [
-    {
+    {{
       "task_title": "Title of dependent task (must match exactly a task title above)",
       "depends_on_title": "Title of prerequisite task (must match exactly a task title above)",
       "type": "blocks"
-    }
+    }}
   ]
-}
+}}
 
 Rules for extraction:
 1. Every distinct action item or deliverable should be a separate task
@@ -65,6 +63,14 @@ class NLPService:
 
     def __init__(self):
         """Initialize Groq client."""
+        try:
+            from groq import Groq  # type: ignore
+        except Exception as e:
+            raise LLMError(
+                "Groq SDK is not installed. Install it with `pip install groq` "
+                "or disable LLM-based extraction for local development."
+            ) from e
+
         self.client = Groq(api_key=settings.GROQ_API_KEY)
         self.model = settings.GROQ_MODEL
 
@@ -104,11 +110,15 @@ class NLPService:
                     },
                 ],
                 temperature=0.1,
-                max_tokens=4096,
+                max_completion_tokens=4096,
+                top_p=1,
+                stream=True,
             )
 
-            # Extract response text
-            response_text = response.choices[0].message.content.strip()
+            response_text = ""
+            for chunk in response:
+                response_text += chunk.choices[0].delta.content or ""
+            response_text = response_text.strip()
             logger.debug(f"LLM response length: {len(response_text)}")
 
             # Parse JSON from response
@@ -307,12 +317,16 @@ Return JSON with:
                     }
                 ],
                 temperature=0.3,
-                max_tokens=500,
+                max_completion_tokens=500,
+                top_p=1,
+                stream=True,
             )
 
-            return self._parse_json_response(
-                response.choices[0].message.content.strip()
-            )
+            response_text = ""
+            for chunk in response:
+                response_text += chunk.choices[0].delta.content or ""
+
+            return self._parse_json_response(response_text.strip())
         except Exception as e:
             logger.error(f"Summary analysis failed: {e}")
             return {

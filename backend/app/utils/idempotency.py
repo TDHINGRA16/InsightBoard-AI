@@ -99,7 +99,7 @@ def generate_job_id(
         str: Unique job ID
     """
     unique = str(uuid.uuid4())[:8]
-    return f"{prefix}:{transcript_id}:{unique}"
+    return f"{prefix}-{transcript_id}-{unique}"
 
 
 class IdempotencyManager:
