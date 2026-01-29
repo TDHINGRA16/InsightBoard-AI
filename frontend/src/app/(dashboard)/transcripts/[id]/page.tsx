@@ -18,7 +18,7 @@ import {
     Download,
     RefreshCw,
 } from "lucide-react";
-import { formatDistanceToNow, format } from "date-fns";
+import { formatDistanceToNow, format, parseISO } from "date-fns";
 import { TranscriptStatus } from "@/types";
 
 export default function TranscriptDetailPage() {
@@ -30,6 +30,19 @@ export default function TranscriptDetailPage() {
             const response = await api.getTranscript(id);
             return response.data.data;
         },
+        enabled: !!id,
+        // Auto-update status until analysis finishes
+        refetchInterval: (query) => {
+            const status = query.state.data?.status as TranscriptStatus | undefined;
+            if (
+                status === TranscriptStatus.UPLOADED ||
+                status === TranscriptStatus.ANALYZING
+            ) {
+                return 1000;
+            }
+            return false;
+        },
+        refetchIntervalInBackground: true,
     });
 
     const { data: tasksData } = useQuery({
@@ -127,10 +140,10 @@ export default function TranscriptDetailPage() {
                         <div>
                             <p className="text-sm text-muted-foreground">Uploaded</p>
                             <p className="font-medium">
-                                {format(new Date(data.created_at), "PPP")}
+                                {format(parseISO(data.created_at), "PPP")}
                             </p>
                             <p className="text-sm text-muted-foreground">
-                                {formatDistanceToNow(new Date(data.created_at), {
+                                {formatDistanceToNow(parseISO(data.created_at), {
                                     addSuffix: true,
                                 })}
                             </p>

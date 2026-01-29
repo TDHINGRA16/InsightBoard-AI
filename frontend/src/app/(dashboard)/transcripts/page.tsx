@@ -25,6 +25,16 @@ export default function TranscriptsPage() {
       const res = await api.getTranscripts({ page: 1, page_size: 50 });
       return res.data;
     },
+    // Auto-refresh list while any transcript is still processing
+    refetchInterval: (query) => {
+      const list = (query.state.data?.data ?? []) as Array<{ status?: TranscriptStatus }>;
+      const hasActive = list.some(
+        (t) =>
+          t.status === TranscriptStatus.UPLOADED || t.status === TranscriptStatus.ANALYZING
+      );
+      return hasActive ? 1000 : false;
+    },
+    refetchIntervalInBackground: true,
   });
 
   const transcripts = useMemo(() => data?.data ?? [], [data]);

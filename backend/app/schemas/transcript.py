@@ -2,10 +2,10 @@
 Transcript schemas for upload and response.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.models.transcript import TranscriptStatus
 
@@ -43,6 +43,13 @@ class TranscriptResponse(TranscriptBase):
         description="Number of tasks extracted (if analyzed)",
     )
 
+    @field_serializer("created_at", "updated_at")
+    def serialize_datetime(self, dt: datetime) -> str:
+        """Ensure datetime is timezone-aware and serialize as ISO format."""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -56,6 +63,13 @@ class TranscriptListItem(BaseModel):
     status: TranscriptStatus
     created_at: datetime
     task_count: int = 0
+
+    @field_serializer("created_at")
+    def serialize_datetime(self, dt: datetime) -> str:
+        """Ensure datetime is timezone-aware and serialize as ISO format."""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
 
     model_config = ConfigDict(from_attributes=True)
 

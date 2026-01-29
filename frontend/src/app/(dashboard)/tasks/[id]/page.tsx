@@ -46,17 +46,32 @@ export default function TaskDetailsPage() {
         toast.error(res.data?.message || "Task is blocked");
         return;
       }
+      
+      // Optimistically update the task status immediately for instant UI feedback
+      queryClient.setQueryData(["task", id], (oldData: any) => {
+        if (oldData) {
+          return { ...oldData, status: "completed" };
+        }
+        return oldData;
+      });
+
       toast.success("Task completed! Dependent tasks unlocked.");
 
+      // Invalidate and refetch the current task query to get full updated data
+      await queryClient.invalidateQueries({ queryKey: ["task", id] });
+      await queryClient.invalidateQueries({ queryKey: ["task-related", id] });
+      
       // Invalidate related queries so graph shows updated status
       queryClient.invalidateQueries({ queryKey: ["graph"] });
       queryClient.invalidateQueries({ queryKey: ["critical-path"] });
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["task-related", id] });
 
-      refetch();
+      // Refetch to ensure UI updates with latest data
+      await refetch();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || "Failed to complete task");
+      // Revert optimistic update on error
+      await refetch();
     } finally {
       setCompleting(false);
     }

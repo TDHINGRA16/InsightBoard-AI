@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks";
 import { Button } from "@/components/ui/button";
-import { LogOut, Loader2 } from "lucide-react";
+import { LogOut, Loader2, Sparkles } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 export default function Header() {
@@ -33,7 +33,12 @@ export default function Header() {
 
   return (
     <header className="h-14 border-b bg-background flex items-center justify-between px-6">
-      <div className="text-sm text-muted-foreground">Shared dependency workspace</div>
+      <div className="flex items-center gap-2">
+        <Sparkles className="h-5 w-5 text-primary" />
+        <span className="text-lg md:text-xl font-semibold md:font-bold tracking-tight">
+          InsightBoard
+        </span>
+      </div>
       <div className="flex items-center gap-3">
         <div className="text-sm">
           <div className="font-medium leading-none">{user?.email ?? "You"}</div>
