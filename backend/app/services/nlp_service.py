@@ -648,8 +648,24 @@ class NLPService:
         Returns:
             List[dict]: Valid dependencies
         """
-        # Build set of valid task titles
+        # Build title index for exact + fuzzy matching
         valid_titles = {t["title"].lower() for t in tasks}
+        title_lookup = {t["title"].lower(): t["title"] for t in tasks}
+
+        def resolve_title(raw_title: str) -> Optional[str]:
+            title = (raw_title or "").strip()
+            if not title:
+                return None
+
+            lowered = title.lower()
+            if lowered in title_lookup:
+                return title_lookup[lowered]
+
+            for candidate_lower, candidate in title_lookup.items():
+                if lowered in candidate_lower or candidate_lower in lowered:
+                    return candidate
+
+            return None
 
         normalized = []
         seen = set()
@@ -658,20 +674,14 @@ class NLPService:
             if not isinstance(dep, dict):
                 continue
 
-            # Handle None values safely
+            # Handle None values safely and resolve to known titles
             raw_task_title = dep.get("task_title")
             raw_depends_on = dep.get("depends_on_title")
-            
-            task_title = (raw_task_title or "").strip()
-            depends_on = (raw_depends_on or "").strip()
 
-            # Skip if titles don't exist in tasks
-            if (
-                not task_title
-                or not depends_on
-                or task_title.lower() not in valid_titles
-                or depends_on.lower() not in valid_titles
-            ):
+            task_title = resolve_title(raw_task_title)
+            depends_on = resolve_title(raw_depends_on)
+
+            if not task_title or not depends_on:
                 continue
 
             # Skip self-dependencies
