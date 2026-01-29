@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
@@ -20,9 +20,30 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow, format, parseISO } from "date-fns";
 import { TranscriptStatus } from "@/types";
+import { toast } from "@/lib/toast";
 
 export default function TranscriptDetailPage() {
     const { id } = useParams<{ id: string }>();
+
+    const exportCsvMutation = useMutation({
+        mutationFn: async () => {
+            const res = await api.exportCsv(id);
+            return res.data as Blob;
+        },
+        onSuccess: (blob) => {
+            const baseName = (data?.filename || `transcript-${id}`).replace(/\.[^/.]+$/, "");
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${baseName}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            toast.success("CSV downloaded");
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.detail || "Failed to export CSV");
+        },
+    });
 
     const { data, isLoading, refetch } = useQuery({
         queryKey: ["transcript", id],
@@ -83,12 +104,14 @@ export default function TranscriptDetailPage() {
                                         View Graph
                                     </Button>
                                 </Link>
-                                <Link href={`/export?transcript_id=${id}`}>
-                                    <Button variant="outline">
-                                        <Download className="h-4 w-4 mr-2" />
-                                        Export
-                                    </Button>
-                                </Link>
+                                <Button
+                                    variant="outline"
+                                    onClick={() => exportCsvMutation.mutate()}
+                                    disabled={exportCsvMutation.isPending}
+                                >
+                                    <Download className="h-4 w-4 mr-2" />
+                                    {exportCsvMutation.isPending ? "Downloading..." : "Export CSV"}
+                                </Button>
                             </>
                         )}
                         <Button variant="ghost" onClick={() => refetch()}>

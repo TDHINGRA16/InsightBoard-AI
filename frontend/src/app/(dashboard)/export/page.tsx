@@ -1,5 +1,6 @@
 "use client";
 
+import type { ComponentType } from "react";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
@@ -14,7 +15,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Download, FileJson, FileSpreadsheet, BarChart3 } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ExportPage() {
@@ -24,7 +25,6 @@ export default function ExportPage() {
     const [selectedTranscript, setSelectedTranscript] = useState<string>(
         preselectedTranscriptId || ""
     );
-    const [selectedFormat, setSelectedFormat] = useState<string>("json");
 
     // Fetch transcripts
     const { data: transcriptsData, isLoading: transcriptsLoading } = useQuery({
@@ -36,29 +36,6 @@ export default function ExportPage() {
     });
 
     // Export mutations
-    const exportJsonMutation = useMutation({
-        mutationFn: async (transcriptId: string) => {
-            const response = await api.exportJson(transcriptId);
-            return response.data;
-        },
-        onSuccess: (data) => {
-            // Download as JSON file
-            const blob = new Blob([JSON.stringify(data.data, null, 2)], {
-                type: "application/json",
-            });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `export-${selectedTranscript}.json`;
-            a.click();
-            window.URL.revokeObjectURL(url);
-            toast.success("JSON exported successfully!");
-        },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || "Export failed");
-        },
-    });
-
     const exportCsvMutation = useMutation({
         mutationFn: async (transcriptId: string) => {
             const response = await api.exportCsv(transcriptId);
@@ -66,7 +43,7 @@ export default function ExportPage() {
         },
         onSuccess: (data) => {
             // Download as CSV file
-            const url = window.URL.createObjectURL(data);
+            const url = window.URL.createObjectURL(data as Blob);
             const a = document.createElement("a");
             a.href = url;
             a.download = `export-${selectedTranscript}.csv`;
@@ -79,34 +56,8 @@ export default function ExportPage() {
         },
     });
 
-    const exportGanttMutation = useMutation({
-        mutationFn: async (transcriptId: string) => {
-            const response = await api.exportGantt(transcriptId);
-            return response.data;
-        },
-        onSuccess: (data) => {
-            // Download as JSON file (Gantt format)
-            const blob = new Blob([JSON.stringify(data.data, null, 2)], {
-                type: "application/json",
-            });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `gantt-${selectedTranscript}.json`;
-            a.click();
-            window.URL.revokeObjectURL(url);
-            toast.success("Gantt data exported successfully!");
-        },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.detail || "Export failed");
-        },
-    });
-
     const transcripts = transcriptsData?.data || [];
-    const isExporting =
-        exportJsonMutation.isPending ||
-        exportCsvMutation.isPending ||
-        exportGanttMutation.isPending;
+    const isExporting = exportCsvMutation.isPending;
 
     const handleExport = () => {
         if (!selectedTranscript) {
@@ -114,17 +65,7 @@ export default function ExportPage() {
             return;
         }
 
-        switch (selectedFormat) {
-            case "json":
-                exportJsonMutation.mutate(selectedTranscript);
-                break;
-            case "csv":
-                exportCsvMutation.mutate(selectedTranscript);
-                break;
-            case "gantt":
-                exportGanttMutation.mutate(selectedTranscript);
-                break;
-        }
+        exportCsvMutation.mutate(selectedTranscript);
     };
 
     if (transcriptsLoading) {
@@ -174,27 +115,13 @@ export default function ExportPage() {
                         <label className="block text-sm font-medium mb-2">
                             Export Format
                         </label>
-                        <div className="grid grid-cols-3 gap-4">
-                            <FormatCard
-                                icon={FileJson}
-                                label="JSON"
-                                description="Complete data structure"
-                                selected={selectedFormat === "json"}
-                                onClick={() => setSelectedFormat("json")}
-                            />
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                             <FormatCard
                                 icon={FileSpreadsheet}
                                 label="CSV"
                                 description="Spreadsheet compatible"
-                                selected={selectedFormat === "csv"}
-                                onClick={() => setSelectedFormat("csv")}
-                            />
-                            <FormatCard
-                                icon={BarChart3}
-                                label="Gantt"
-                                description="For Gantt chart tools"
-                                selected={selectedFormat === "gantt"}
-                                onClick={() => setSelectedFormat("gantt")}
+                                selected
+                                onClick={() => {}}
                             />
                         </div>
                     </div>
@@ -221,7 +148,7 @@ function FormatCard({
     selected,
     onClick,
 }: {
-    icon: any;
+    icon: ComponentType<{ className?: string }>;
     label: string;
     description: string;
     selected: boolean;
