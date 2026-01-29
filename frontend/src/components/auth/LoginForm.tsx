@@ -115,15 +115,7 @@ export function LoginForm() {
                     </form>
                 </Form>
 
-                <div className="mt-4 text-center text-sm">
-                    <Link
-                        href="/forgot-password"
-                        className="text-primary hover:underline"
-                    >
-                        Forgot password?
-                    </Link>
-                </div>
-
+                
                 <div className="mt-6 text-center text-sm text-muted-foreground">
                     Don&apos;t have an account?{" "}
                     <Link href="/signup" className="text-primary hover:underline">
