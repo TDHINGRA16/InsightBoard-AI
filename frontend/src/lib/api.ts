@@ -99,13 +99,20 @@ export const api = {
     cancelJob: (jobId: string) => apiClient.post(`/jobs/${jobId}/cancel`),
 
     // Graphs
-    getGraph: (transcriptId: string) => apiClient.get(`/graphs/${transcriptId}`),
-    getGraphVisualization: (transcriptId: string) =>
-        apiClient.get(`/graphs/${transcriptId}`),
+    getGraph: (transcriptId: string, useCache = true) =>
+        apiClient.get(`/graphs/${transcriptId}`, { params: { use_cache: useCache } }),
+    getGraphVisualization: (transcriptId: string, useCache = true) =>
+        apiClient.get(`/graphs/${transcriptId}`, { params: { use_cache: useCache } }),
     getCriticalPath: (transcriptId: string) =>
         apiClient.get(`/graphs/${transcriptId}/critical-path`),
     getBottlenecks: (transcriptId: string) =>
         apiClient.get(`/graphs/${transcriptId}/bottlenecks`),
+    refreshGraph: (transcriptId: string) =>
+        apiClient.post(`/graphs/${transcriptId}/refresh`),
+
+    // Task Actions
+    completeTask: (taskId: string) =>
+        apiClient.post(`/tasks/${taskId}/complete`),
 
     // Export
     exportJson: (transcriptId: string) =>

@@ -5,7 +5,6 @@ echo "Starting InsightBoard AI Backend..."
 
 # Run database migrations
 echo "Running database migrations..."
-alembic upgrade head
 
 # Start RQ workers in background (2 workers for task processing)
 for i in {1..2}; do

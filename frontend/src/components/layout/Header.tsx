@@ -1,84 +1,59 @@
 "use client";
 
+import { useState } from "react";
 import { useAuth } from "@/hooks";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Bell, LogOut, User, Settings } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { LogOut, Loader2 } from "lucide-react";
 import { toast } from "@/lib/toast";
 
 export default function Header() {
-    const { user, signOut } = useAuth();
-    const router = useRouter();
+  const { user, signOut } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-    const handleSignOut = async () => {
-        await signOut();
-        toast.success("Signed out successfully");
-        router.push("/login");
-    };
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      const { error } = await signOut();
 
-    const initials = user?.email
-        ? user.email.substring(0, 2).toUpperCase()
-        : "U";
+      if (error) {
+        toast.error("Failed to logout: " + error.message);
+        setIsLoggingOut(false);
+        return;
+      }
 
-    return (
-        <header className="h-16 border-b bg-card flex items-center justify-between px-6">
-            {/* Page Title - Can be dynamic */}
-            <div>
-                <h1 className="text-lg font-semibold">InsightBoard</h1>
-            </div>
+      toast.success("Logged out successfully");
+      // Use window.location to avoid React hooks issues during auth state change
+      window.location.href = "/login";
+    } catch (err) {
+      toast.error("An error occurred while logging out");
+      console.error("Logout error:", err);
+      setIsLoggingOut(false);
+    }
+  };
 
-            {/* Right side */}
-            <div className="flex items-center gap-4">
-                {/* Notifications */}
-                <Button variant="ghost" size="icon">
-                    <Bell className="h-5 w-5" />
-                </Button>
-
-                {/* User Menu */}
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                            <Avatar className="h-10 w-10">
-                                <AvatarImage src={user?.user_metadata?.avatar_url} />
-                                <AvatarFallback>{initials}</AvatarFallback>
-                            </Avatar>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-56" align="end">
-                        <DropdownMenuLabel>
-                            <div className="flex flex-col space-y-1">
-                                <p className="text-sm font-medium">
-                                    {user?.user_metadata?.full_name || "User"}
-                                </p>
-                                <p className="text-xs text-muted-foreground">{user?.email}</p>
-                            </div>
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => router.push("/profile")}>
-                            <User className="mr-2 h-4 w-4" />
-                            Profile
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => router.push("/settings")}>
-                            <Settings className="mr-2 h-4 w-4" />
-                            Settings
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={handleSignOut} className="text-red-600">
-                            <LogOut className="mr-2 h-4 w-4" />
-                            Sign out
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
-        </header>
-    );
+  return (
+    <header className="h-14 border-b bg-background flex items-center justify-between px-6">
+      <div className="text-sm text-muted-foreground">Shared dependency workspace</div>
+      <div className="flex items-center gap-3">
+        <div className="text-sm">
+          <div className="font-medium leading-none">{user?.email ?? "You"}</div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleLogout}
+          disabled={isLoggingOut}
+        >
+          {isLoggingOut ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <>
+              <LogOut className="h-4 w-4 mr-2" />
+              Logout
+            </>
+          )}
+        </Button>
+      </div>
+    </header>
+  );
 }

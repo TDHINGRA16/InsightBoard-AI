@@ -54,11 +54,17 @@ class AuditLog(Base):
         index=True,
     )
     action: Mapped[AuditAction] = mapped_column(
-        Enum(AuditAction),
+        Enum(
+            AuditAction,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         nullable=False,
     )
     resource_type: Mapped[ResourceType] = mapped_column(
-        Enum(ResourceType),
+        Enum(
+            ResourceType,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
         nullable=False,
     )
     resource_id: Mapped[str] = mapped_column(

@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 
 interface FileUploadProps {
     onUploadSuccess?: (transcriptId: string) => void;
+    onDuplicate?: (transcriptId: string) => void;
     onUploadError?: (error: string) => void;
     maxSizeMB?: number;
     acceptedTypes?: string[];
@@ -19,6 +20,7 @@ interface FileUploadProps {
 
 export function FileUpload({
     onUploadSuccess,
+    onDuplicate,
     onUploadError,
     maxSizeMB = 50,
     acceptedTypes = [".txt", ".pdf"],
@@ -86,8 +88,20 @@ export function FileUpload({
             setProgress(100);
             setSuccess(true);
 
-            toast.success("Transcript uploaded successfully!");
-            onUploadSuccess?.(response.data.data.id);
+            const transcriptId = response.data?.data?.id as string | undefined;
+            const isDuplicate = !!response.data?.is_duplicate;
+
+            if (!transcriptId) {
+                throw new Error("Upload succeeded but transcript id missing");
+            }
+
+            if (isDuplicate) {
+                toast.info("Duplicate transcript detected.");
+                onDuplicate?.(transcriptId);
+            } else {
+                toast.success("Transcript uploaded successfully!");
+                onUploadSuccess?.(transcriptId);
+            }
 
             // Reset after success
             setTimeout(() => {

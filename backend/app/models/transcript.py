@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import Enum, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Enum, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class TranscriptStatus(str, enum.Enum):
-    """Status of transcript processing."""
+    """Status of transcript analysis lifecycle."""
 
     UPLOADED = "uploaded"
     ANALYZING = "analyzing"
@@ -31,9 +31,12 @@ class TranscriptStatus(str, enum.Enum):
 
 class Transcript(Base):
     """
-    Transcript table for storing uploaded project transcripts.
+    Transcript table for uploaded transcript text.
 
-    Contains the raw content and metadata about processing status.
+    Notes:
+    - `content_hash` is unique (see migration) to deduplicate identical content across users.
+    - The workspace is shared: any user can view any transcript/tasks.
+      The `user_id` is retained to indicate who uploaded it.
     """
 
     __tablename__ = "transcripts"
@@ -48,6 +51,7 @@ class Transcript(Base):
         ForeignKey("profiles.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+        comment="Uploader profile id",
     )
     filename: Mapped[str] = mapped_column(
         String(255),
@@ -56,23 +60,19 @@ class Transcript(Base):
     file_type: Mapped[str] = mapped_column(
         String(10),
         nullable=False,
-        comment="File extension (.txt, .pdf)",
     )
     size_bytes: Mapped[int] = mapped_column(
-        Integer,
         nullable=False,
     )
     content: Mapped[str] = mapped_column(
         Text,
         nullable=False,
-        comment="Extracted text content",
     )
     content_hash: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
-        unique=True,
         index=True,
-        comment="SHA-256 hash for deduplication",
+        comment="SHA256 of transcript text content",
     )
     status: Mapped[TranscriptStatus] = mapped_column(
         Enum(
@@ -87,7 +87,6 @@ class Transcript(Base):
     analysis_result: Mapped[Optional[dict]] = mapped_column(
         JSONB,
         nullable=True,
-        comment="Cached analysis summary",
     )
     error_message: Mapped[Optional[str]] = mapped_column(
         Text,
@@ -118,9 +117,10 @@ class Transcript(Base):
         back_populates="transcript",
         cascade="all, delete-orphan",
     )
-    graphs: Mapped[List["Graph"]] = relationship(
+    graph: Mapped[Optional["Graph"]] = relationship(
         "Graph",
         back_populates="transcript",
+        uselist=False,
         cascade="all, delete-orphan",
     )
 
@@ -130,3 +130,4 @@ class Transcript(Base):
 
     def __repr__(self) -> str:
         return f"<Transcript(id={self.id}, filename={self.filename}, status={self.status})>"
+

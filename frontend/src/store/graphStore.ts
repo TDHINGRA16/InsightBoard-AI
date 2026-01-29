@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 
 interface GraphState {
     selectedNodeId: string | null;
@@ -12,15 +13,29 @@ interface GraphState {
     setLayoutDirection: (direction: "TB" | "LR") => void;
 }
 
-export const useGraphStore = create<GraphState>((set) => ({
-    selectedNodeId: null,
-    highlightCriticalPath: true,
-    showMiniMap: true,
-    layoutDirection: "TB",
+export const useGraphStore = create<GraphState>()(
+    persist(
+        (set) => ({
+            selectedNodeId: null,
+            highlightCriticalPath: true,
+            showMiniMap: true,
+            layoutDirection: "LR",  // Default to horizontal (left-to-right) layout
 
-    setSelectedNodeId: (id) => set({ selectedNodeId: id }),
-    toggleCriticalPath: () =>
-        set((state) => ({ highlightCriticalPath: !state.highlightCriticalPath })),
-    toggleMiniMap: () => set((state) => ({ showMiniMap: !state.showMiniMap })),
-    setLayoutDirection: (direction) => set({ layoutDirection: direction }),
-}));
+            setSelectedNodeId: (id) => set({ selectedNodeId: id }),
+            toggleCriticalPath: () =>
+                set((state) => ({ highlightCriticalPath: !state.highlightCriticalPath })),
+            toggleMiniMap: () => set((state) => ({ showMiniMap: !state.showMiniMap })),
+            setLayoutDirection: (direction) => set({ layoutDirection: direction }),
+        }),
+        {
+            name: "graph-settings",
+            partialize: (state) => ({
+                // Only persist these preferences (not selectedNodeId)
+                highlightCriticalPath: state.highlightCriticalPath,
+                showMiniMap: state.showMiniMap,
+                layoutDirection: state.layoutDirection,
+            }),
+        }
+    )
+);
+

@@ -49,12 +49,8 @@ async def list_tasks(
 
     Filter by transcript_id, status, priority, or assignee.
     """
-    # Build query - only show tasks from user's transcripts
-    query = (
-        db.query(Task)
-        .join(Transcript)
-        .filter(Transcript.user_id == current_user.id)
-    )
+    # Shared workspace: show ALL tasks
+    query = db.query(Task).join(Transcript)
 
     if transcript_id:
         query = query.filter(Task.transcript_id == transcript_id)
@@ -124,12 +120,11 @@ async def create_task(
 
     Task must be associated with a transcript you own.
     """
-    # Verify transcript ownership
+    # Shared workspace: any user can create tasks for any transcript
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == task_data.transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -221,7 +216,6 @@ async def get_task(
         .join(Transcript)
         .filter(
             Task.id == task_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -273,7 +267,6 @@ async def update_task(
         .join(Transcript)
         .filter(
             Task.id == task_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -370,7 +363,6 @@ async def delete_task(
         .join(Transcript)
         .filter(
             Task.id == task_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -394,3 +386,101 @@ async def delete_task(
         success=True,
         message="Task deleted successfully",
     )
+
+
+@router.get(
+    "/{task_id}/related",
+    response_model=BaseResponse,
+    summary="Get tasks related to a task (dependencies + dependents)",
+)
+async def get_related_tasks(
+    task_id: str,
+    db: DbSession = None,
+    current_user: AuthUser = None,
+):
+    """
+    Return minimal info about all dependency/dependent tasks for a given task.
+    """
+    task = (
+        db.query(Task)
+        .options(joinedload(Task.dependencies), joinedload(Task.dependents))
+        .filter(Task.id == task_id)
+        .first()
+    )
+    if not task:
+        raise NotFoundError("Task", task_id)
+
+    related_ids = {str(d.depends_on_task_id) for d in task.dependencies} | {
+        str(d.task_id) for d in task.dependents
+    }
+
+    if not related_ids:
+        return BaseResponse(success=True, data=[])
+
+    related = db.query(Task).filter(Task.id.in_(list(related_ids))).all()
+    return BaseResponse(
+        success=True,
+        data=[{"id": str(t.id), "title": t.title, "status": t.status} for t in related],
+    )
+
+
+@router.post(
+    "/{task_id}/complete",
+    response_model=BaseResponse,
+    summary="Mark a task completed",
+)
+async def complete_task(
+    task_id: str,
+    db: DbSession = None,
+    current_user: AuthUser = None,
+):
+    """
+    Mark a task completed.
+
+    Backend-side guard: if any blocking dependency isn't completed, refuse.
+    """
+    task = (
+        db.query(Task)
+        .options(joinedload(Task.dependencies))
+        .filter(Task.id == task_id)
+        .first()
+    )
+    if not task:
+        raise NotFoundError("Task", task_id)
+
+    # Block if any dependency task isn't completed
+    if task.dependencies:
+        dep_ids = [d.depends_on_task_id for d in task.dependencies]
+        incomplete = (
+            db.query(Task)
+            .filter(Task.id.in_(dep_ids), Task.status != TaskStatus.COMPLETED)
+            .all()
+        )
+        if incomplete:
+            return BaseResponse(
+                success=False,
+                message="Task is blocked by incomplete dependencies",
+                data={"blocked_by": [{"id": str(t.id), "title": t.title} for t in incomplete]},
+            )
+
+    if task.status != TaskStatus.COMPLETED:
+        old_status = task.status
+        task.status = TaskStatus.COMPLETED
+        db.commit()
+        db.refresh(task)
+
+        # Audit + webhook
+        audit_service = AuditService(db)
+        audit_service.log_update(
+            user_id=current_user.id,
+            resource_type=ResourceType.TASK,
+            resource_id=str(task.id),
+            old_values={"status": old_status.value},
+            new_values={"status": task.status.value},
+        )
+        try:
+            trigger_task_completed(db, current_user.id, str(task.id), task.title)
+        except Exception:
+            pass
+
+    return BaseResponse(success=True, data={"id": str(task.id), "status": task.status})

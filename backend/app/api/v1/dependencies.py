@@ -45,38 +45,22 @@ async def list_dependencies(
     service = DependencyService(db)
 
     if transcript_id:
-        # Verify ownership
-        transcript = (
-            db.query(Transcript)
-            .filter(
-                Transcript.id == transcript_id,
-                Transcript.user_id == current_user.id,
-            )
-            .first()
-        )
-        if not transcript:
-            raise NotFoundError("Transcript", transcript_id)
-
+        # Shared workspace: any user can view transcript dependencies
         dependencies = service.list_dependencies_for_transcript(transcript_id)
     elif task_id:
-        # Verify ownership
-        task = (
-            db.query(Task)
-            .join(Transcript)
-            .filter(
-                Task.id == task_id,
-                Transcript.user_id == current_user.id,
-            )
-            .first()
-        )
-        if not task:
-            raise NotFoundError("Task", task_id)
-
+        # Shared workspace: any user can view task dependencies
         deps, dependents = service.get_task_dependencies(task_id)
         dependencies = deps + dependents
     else:
-        # Default: list all dependencies across user's transcripts
-        dependencies = service.list_dependencies_for_user(str(current_user.id))
+        # Default: list ALL dependencies
+        from sqlalchemy.orm import joinedload
+        from app.models.dependency import Dependency
+
+        dependencies = (
+            db.query(Dependency)
+            .options(joinedload(Dependency.task), joinedload(Dependency.depends_on_task))
+            .all()
+        )
 
     return DependencyListResponse(
         success=True,
@@ -112,13 +96,11 @@ async def create_dependency(
 
     The dependency will be validated to ensure no cycles are created.
     """
-    # Verify task ownership
+    # Shared workspace: any user can create dependencies
     task = (
         db.query(Task)
-        .join(Transcript)
         .filter(
             Task.id == dep_data.task_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -177,14 +159,11 @@ async def delete_dependency(
     """
     from app.models.dependency import Dependency
 
-    # Verify ownership through task -> transcript
+    # Shared workspace: any user can delete dependencies
     dependency = (
         db.query(Dependency)
-        .join(Task, Dependency.task_id == Task.id)
-        .join(Transcript)
         .filter(
             Dependency.id == dependency_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -223,13 +202,11 @@ async def get_task_dependencies(
     """
     Get all dependencies and dependents for a task.
     """
-    # Verify ownership
+    # Shared workspace: any user can view task dependencies
     task = (
         db.query(Task)
-        .join(Transcript)
         .filter(
             Task.id == task_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -284,12 +261,11 @@ async def validate_dag(
     """
     Validate that the dependency graph is a valid DAG (no cycles).
     """
-    # Verify ownership
+    # Shared workspace: any user can validate transcript DAG
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )

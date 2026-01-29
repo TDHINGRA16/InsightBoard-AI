@@ -50,7 +50,7 @@ class ExportService:
 
         Args:
             transcript_id: UUID of transcript
-            user_id: UUID of requesting user
+            user_id: UUID of requesting user (for logging)
             format: Export format (json, csv, gantt)
             include_dependencies: Include dependency data
             include_graph: Include graph layout data
@@ -61,13 +61,10 @@ class ExportService:
         Raises:
             NotFoundError: If transcript not found
         """
-        # Verify transcript exists and user owns it
+        # Shared workspace: any authenticated user can export any transcript
         transcript = (
             self.db.query(Transcript)
-            .filter(
-                Transcript.id == transcript_id,
-                Transcript.user_id == user_id,
-            )
+            .filter(Transcript.id == transcript_id)
             .first()
         )
 

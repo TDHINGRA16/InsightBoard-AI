@@ -91,15 +91,8 @@ class TranscriptService:
         # Compute content hash for deduplication
         content_hash = hashlib.sha256(text_content.encode()).hexdigest()
 
-        # Check for duplicate by content hash
-        existing = (
-            self.db.query(Transcript)
-            .filter(
-                Transcript.user_id == user_id,
-                Transcript.content_hash == content_hash,
-            )
-            .first()
-        )
+        # Check for duplicate by content hash (GLOBAL - shared workspace)
+        existing = self.db.query(Transcript).filter(Transcript.content_hash == content_hash).first()
 
         if existing:
             logger.info(f"Duplicate transcript detected: {existing.id}")
@@ -123,11 +116,7 @@ class TranscriptService:
         logger.info(f"Transcript uploaded: {transcript.id}")
         return transcript, False
 
-    def get_transcript(
-        self,
-        transcript_id: str,
-        user_id: str,
-    ) -> Transcript:
+    def get_transcript(self, transcript_id: str) -> Transcript:
         """
         Get a transcript by ID.
 
@@ -144,10 +133,7 @@ class TranscriptService:
         transcript = (
             self.db.query(Transcript)
             .options(joinedload(Transcript.tasks))
-            .filter(
-                Transcript.id == transcript_id,
-                Transcript.user_id == user_id,
-            )
+            .filter(Transcript.id == transcript_id)
             .first()
         )
 
@@ -158,7 +144,6 @@ class TranscriptService:
 
     def list_transcripts(
         self,
-        user_id: str,
         status: Optional[TranscriptStatus] = None,
         search: Optional[str] = None,
         page: int = 1,
@@ -177,7 +162,8 @@ class TranscriptService:
         Returns:
             Tuple[List[Transcript], int]: (transcripts, total_count)
         """
-        query = self.db.query(Transcript).filter(Transcript.user_id == user_id)
+        # Shared workspace: list ALL transcripts
+        query = self.db.query(Transcript)
 
         if status:
             query = query.filter(Transcript.status == status)
@@ -202,7 +188,6 @@ class TranscriptService:
     def delete_transcript(
         self,
         transcript_id: str,
-        user_id: str,
     ) -> bool:
         """
         Delete a transcript.
@@ -217,7 +202,7 @@ class TranscriptService:
         Raises:
             NotFoundError: If transcript not found
         """
-        transcript = self.get_transcript(transcript_id, user_id)
+        transcript = self.get_transcript(transcript_id)
 
         self.db.delete(transcript)
         self.db.commit()
@@ -267,7 +252,6 @@ class TranscriptService:
     def get_transcript_with_task_count(
         self,
         transcript_id: str,
-        user_id: str,
     ) -> dict:
         """
         Get transcript with task count for response.
@@ -279,7 +263,7 @@ class TranscriptService:
         Returns:
             dict: Transcript data with task_count
         """
-        transcript = self.get_transcript(transcript_id, user_id)
+        transcript = self.get_transcript(transcript_id)
         task_count = len(transcript.tasks) if transcript.tasks else 0
 
         return {

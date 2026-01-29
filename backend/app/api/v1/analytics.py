@@ -27,54 +27,47 @@ async def get_dashboard_analytics(
     Get analytics summary for the dashboard.
 
     Returns counts and aggregations for transcripts, tasks,
-    jobs, and project metrics.
+    jobs, and project metrics. Shared workspace - shows all data.
     """
-    user_id = current_user.id
-
-    # Transcript stats
+    # Transcript stats (shared workspace - no user filter)
     transcript_count = (
         db.query(func.count(Transcript.id))
-        .filter(Transcript.user_id == user_id)
         .scalar()
     )
 
     transcripts_by_status = (
         db.query(Transcript.status, func.count(Transcript.id))
-        .filter(Transcript.user_id == user_id)
         .group_by(Transcript.status)
         .all()
     )
 
-    # Task stats (via transcript ownership)
+    # Task stats
     task_count = (
         db.query(func.count(Task.id))
-        .join(Transcript)
-        .filter(Transcript.user_id == user_id)
         .scalar()
     )
 
     tasks_by_status = (
         db.query(Task.status, func.count(Task.id))
-        .join(Transcript)
-        .filter(Transcript.user_id == user_id)
         .group_by(Task.status)
         .all()
     )
 
     tasks_by_priority = (
         db.query(Task.priority, func.count(Task.id))
-        .join(Transcript)
-        .filter(Transcript.user_id == user_id)
         .group_by(Task.priority)
         .all()
     )
 
+    # Convert to dict for easy access
+    status_counts = {status.value: count for status, count in tasks_by_status}
+    completed_tasks = status_counts.get("completed", 0)
+    pending_tasks = status_counts.get("pending", 0)
+    in_progress_tasks = status_counts.get("in_progress", 0)
+
     # Dependency stats
     dependency_count = (
         db.query(func.count(Dependency.id))
-        .join(Task, Dependency.task_id == Task.id)
-        .join(Transcript)
-        .filter(Transcript.user_id == user_id)
         .scalar()
     )
 
@@ -83,13 +76,11 @@ async def get_dashboard_analytics(
     # Job stats
     job_count = (
         db.query(func.count(Job.id))
-        .filter(Job.user_id == user_id)
         .scalar()
     )
 
     jobs_by_status = (
         db.query(Job.status, func.count(Job.id))
-        .filter(Job.user_id == user_id)
         .group_by(Job.status)
         .all()
     )
@@ -97,17 +88,22 @@ async def get_dashboard_analytics(
     # Graph metrics
     avg_critical_path_length = (
         db.query(func.avg(Graph.critical_path_length))
-        .join(Transcript)
-        .filter(
-            Transcript.user_id == user_id,
-            Graph.critical_path_length.isnot(None),
-        )
+        .filter(Graph.critical_path_length.isnot(None))
         .scalar()
     ) or 0
 
     return {
         "success": True,
         "data": {
+            # Flat fields for simple dashboard cards
+            "total_transcripts": transcript_count,
+            "total_tasks": task_count,
+            "completed_tasks": completed_tasks,
+            "pending_tasks": pending_tasks,
+            "in_progress_tasks": in_progress_tasks,
+            "total_dependencies": dependency_count,
+            "total_jobs": job_count,
+            # Nested details
             "transcripts": {
                 "total": transcript_count,
                 "by_status": {
@@ -117,10 +113,7 @@ async def get_dashboard_analytics(
             },
             "tasks": {
                 "total": task_count,
-                "by_status": {
-                    status.value: count
-                    for status, count in tasks_by_status
-                },
+                "by_status": status_counts,
                 "by_priority": {
                     priority.value: count
                     for priority, count in tasks_by_priority
@@ -231,10 +224,7 @@ async def get_transcript_analytics(
     # Verify ownership
     transcript = (
         db.query(Transcript)
-        .filter(
-            Transcript.id == transcript_id,
-            Transcript.user_id == current_user.id,
-        )
+        .filter(Transcript.id == transcript_id)
         .first()
     )
 

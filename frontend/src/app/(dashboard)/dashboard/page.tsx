@@ -1,144 +1,249 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import Link from "next/link";
+import {
+  Clock,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  FileText,
+  Upload,
+  Search,
+  AlertTriangle
+} from "lucide-react";
+
 import { api } from "@/lib/api";
-import { PageHeader } from "@/components/common";
-import { MetricCard } from "@/components/analytics";
-import { TranscriptCard } from "@/components/transcript";
-import { TaskCard } from "@/components/task";
+import { PageHeader, Loading } from "@/components/common";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-    FileText,
-    ListTodo,
-    GitBranch,
-    Clock,
-    Upload,
-    ArrowRight,
-} from "lucide-react";
-import { Transcript, Task } from "@/types";
+import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 
 export default function DashboardPage() {
-    // Fetch analytics
-    const { data: analytics, isLoading: analyticsLoading } = useQuery({
-        queryKey: ["analytics", "dashboard"],
-        queryFn: async () => {
-            const response = await api.getDashboardAnalytics();
-            return response.data.data;
-        },
-    });
+  const { data, isLoading } = useQuery({
+    queryKey: ["dashboard-analytics"],
+    queryFn: async () => {
+      const res = await api.getDashboardAnalytics();
+      return res.data?.data;
+    },
+  });
 
-    // Fetch recent transcripts
-    const { data: transcriptsData } = useQuery({
-        queryKey: ["transcripts", { page: 1, page_size: 4 }],
-        queryFn: async () => {
-            const response = await api.getTranscripts({ page: 1, page_size: 4 });
-            return response.data;
-        },
-    });
+  if (isLoading) return <Loading text="Loading dashboard..." />;
 
-    // Fetch recent tasks
-    const { data: tasksData } = useQuery({
-        queryKey: ["tasks", { page: 1, page_size: 4 }],
-        queryFn: async () => {
-            const response = await api.getTasks({ page: 1, page_size: 4 });
-            return response.data;
-        },
-    });
+  const stats = data ?? {};
+  const tasksByStatus = stats.tasks?.by_status ?? {};
+  const tasksByPriority = stats.tasks?.by_priority ?? {};
+  const transcriptsByStatus = stats.transcripts?.by_status ?? {};
+  const jobsByStatus = stats.jobs?.by_status ?? {};
+  const totalTasks = stats.total_tasks ?? 0;
 
-    const transcripts: Transcript[] = transcriptsData?.data || [];
-    const tasks: Task[] = tasksData?.data || [];
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Dashboard"
+        description="Workspace overview & analytics."
+        actions={
+          <Button asChild>
+            <Link href="/transcripts">Add Transcript</Link>
+          </Button>
+        }
+      />
 
-    return (
-        <div>
-            <PageHeader
-                title="Dashboard"
-                description="Overview of your project analysis"
-                actions={
-                    <Link href="/upload">
-                        <Button>
-                            <Upload className="h-4 w-4 mr-2" />
-                            Upload Transcript
-                        </Button>
-                    </Link>
-                }
+      {/* Summary Cards */}
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <StatCard title="Total Transcripts" value={stats.total_transcripts ?? 0} />
+        <StatCard title="Total Tasks" value={stats.total_tasks ?? 0} />
+        <StatCard title="Completed Tasks" value={stats.completed_tasks ?? 0} />
+        <StatCard title="Pending Tasks" value={stats.pending_tasks ?? 0} />
+      </div>
+
+      {/* Detailed Analytics */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Tasks by Status */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-medium">Tasks by Status</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <StatusRow
+              icon={<Clock className="h-4 w-4 text-amber-500" />}
+              label="Pending"
+              count={tasksByStatus.pending ?? 0}
             />
+            <StatusRow
+              icon={<Loader2 className="h-4 w-4 text-blue-500" />}
+              label="In Progress"
+              count={tasksByStatus.in_progress ?? 0}
+            />
+            <StatusRow
+              icon={<CheckCircle2 className="h-4 w-4 text-green-500" />}
+              label="Completed"
+              count={tasksByStatus.completed ?? 0}
+            />
+            <StatusRow
+              icon={<XCircle className="h-4 w-4 text-red-500" />}
+              label="Blocked"
+              count={tasksByStatus.blocked ?? 0}
+            />
+          </CardContent>
+        </Card>
 
-            {/* Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                <MetricCard
-                    title="Total Transcripts"
-                    value={analytics?.transcripts?.total || 0}
-                    icon={FileText}
-                    description="Uploaded transcripts"
-                />
-                <MetricCard
-                    title="Total Tasks"
-                    value={analytics?.tasks?.total || 0}
-                    icon={ListTodo}
-                    description="Extracted tasks"
-                />
-                <MetricCard
-                    title="Dependencies"
-                    value={analytics?.dependencies?.total || 0}
-                    icon={GitBranch}
-                    description="Task relationships"
-                />
-                <MetricCard
-                    title="Avg Critical Path"
-                    value={`${analytics?.metrics?.average_critical_path_hours?.toFixed(1) || 0}h`}
-                    icon={Clock}
-                    description="Average duration"
-                />
-            </div>
+        {/* Tasks by Priority */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-medium">Tasks by Priority</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <PriorityRow
+              label="Critical"
+              count={tasksByPriority.critical ?? 0}
+              total={totalTasks}
+              color="bg-red-500"
+            />
+            <PriorityRow
+              label="High"
+              count={tasksByPriority.high ?? 0}
+              total={totalTasks}
+              color="bg-orange-500"
+            />
+            <PriorityRow
+              label="Medium"
+              count={tasksByPriority.medium ?? 0}
+              total={totalTasks}
+              color="bg-yellow-500"
+            />
+            <PriorityRow
+              label="Low"
+              count={tasksByPriority.low ?? 0}
+              total={totalTasks}
+              color="bg-gray-400"
+            />
+          </CardContent>
+        </Card>
 
-            {/* Recent Items */}
-            <div className="grid lg:grid-cols-2 gap-8">
-                {/* Recent Transcripts */}
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle>Recent Transcripts</CardTitle>
-                        <Link href="/transcripts">
-                            <Button variant="ghost" size="sm">
-                                View All <ArrowRight className="h-4 w-4 ml-1" />
-                            </Button>
-                        </Link>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {transcripts.length > 0 ? (
-                            transcripts.map((transcript) => (
-                                <TranscriptCard key={transcript.id} transcript={transcript} />
-                            ))
-                        ) : (
-                            <p className="text-muted-foreground text-center py-8">
-                                No transcripts yet. Upload one to get started!
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
+        {/* Transcripts by Status */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-medium">Transcripts by Status</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <StatusRow
+              icon={<Upload className="h-4 w-4 text-slate-500" />}
+              label="Uploaded"
+              count={transcriptsByStatus.uploaded ?? 0}
+            />
+            <StatusRow
+              icon={<Loader2 className="h-4 w-4 text-blue-500" />}
+              label="Analyzing"
+              count={transcriptsByStatus.analyzing ?? 0}
+            />
+            <StatusRow
+              icon={<CheckCircle2 className="h-4 w-4 text-green-500" />}
+              label="Analyzed"
+              count={transcriptsByStatus.analyzed ?? 0}
+            />
+            <StatusRow
+              icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
+              label="Failed"
+              count={transcriptsByStatus.failed ?? 0}
+            />
+          </CardContent>
+        </Card>
 
-                {/* Recent Tasks */}
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between">
-                        <CardTitle>Recent Tasks</CardTitle>
-                        <Link href="/tasks">
-                            <Button variant="ghost" size="sm">
-                                View All <ArrowRight className="h-4 w-4 ml-1" />
-                            </Button>
-                        </Link>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        {tasks.length > 0 ? (
-                            tasks.map((task) => <TaskCard key={task.id} task={task} />)
-                        ) : (
-                            <p className="text-muted-foreground text-center py-8">
-                                No tasks yet. Upload and analyze a transcript!
-                            </p>
-                        )}
-                    </CardContent>
-                </Card>
-            </div>
-        </div>
-    );
+        {/* Jobs Overview */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-medium">Jobs Overview</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <StatusRow
+              icon={<Clock className="h-4 w-4 text-slate-500" />}
+              label="Queued"
+              count={jobsByStatus.queued ?? 0}
+            />
+            <StatusRow
+              icon={<Loader2 className="h-4 w-4 text-blue-500" />}
+              label="Processing"
+              count={jobsByStatus.processing ?? 0}
+            />
+            <StatusRow
+              icon={<CheckCircle2 className="h-4 w-4 text-green-500" />}
+              label="Completed"
+              count={jobsByStatus.completed ?? 0}
+            />
+            <StatusRow
+              icon={<XCircle className="h-4 w-4 text-red-500" />}
+              label="Failed"
+              count={jobsByStatus.failed ?? 0}
+            />
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
 }
+
+function StatCard({ title, value }: { title: string; value: number }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm text-muted-foreground font-normal">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-semibold">{value}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatusRow({
+  icon,
+  label,
+  count
+}: {
+  icon: React.ReactNode;
+  label: string;
+  count: number;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="text-sm">{label}</span>
+      </div>
+      <span className="text-sm font-medium">{count}</span>
+    </div>
+  );
+}
+
+function PriorityRow({
+  label,
+  count,
+  total,
+  color
+}: {
+  label: string;
+  count: number;
+  total: number;
+  color: string;
+}) {
+  const percentage = total > 0 ? (count / total) * 100 : 0;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between text-sm">
+        <span>{label}</span>
+        <span className="font-medium">{count}</span>
+      </div>
+      <div className="h-2 bg-muted rounded-full overflow-hidden">
+        <div
+          className={cn("h-full rounded-full transition-all", color)}
+          style={{ width: `${percentage}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+

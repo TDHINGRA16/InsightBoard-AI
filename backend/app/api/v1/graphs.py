@@ -35,12 +35,11 @@ async def get_graph(
 
     Returns nodes and edges formatted for React Flow.
     """
-    # Verify ownership
+    # Shared workspace: any user can view graphs
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -109,12 +108,11 @@ async def get_critical_path(
     The critical path is the longest sequence of dependent tasks
     that determines the minimum project duration.
     """
-    # Verify ownership
+    # Shared workspace: any user can view critical path
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -199,12 +197,11 @@ async def get_bottlenecks(
     Bottlenecks are tasks with many dependents that could
     block significant portions of the project if delayed.
     """
-    # Verify ownership
+    # Shared workspace: any user can view bottlenecks
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )

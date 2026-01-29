@@ -41,12 +41,11 @@ async def start_analysis(
     from app.models.dependency import Dependency
     from app.models.task import Task
 
-    # Verify transcript ownership
+    # Shared workspace: any user can analyze any transcript
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == request.transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -159,12 +158,11 @@ async def retry_analysis(
     """
     import uuid
 
-    # Verify transcript ownership
+    # Shared workspace: any user can retry analysis
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )

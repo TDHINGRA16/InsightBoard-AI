@@ -29,13 +29,10 @@ async def export_data(
 
     Supported formats: json, csv, gantt
     """
-    # Verify ownership
+    # Shared workspace: verify transcript exists
     transcript = (
         db.query(Transcript)
-        .filter(
-            Transcript.id == request.transcript_id,
-            Transcript.user_id == current_user.id,
-        )
+        .filter(Transcript.id == request.transcript_id)
         .first()
     )
 
@@ -76,12 +73,11 @@ async def export_json(
 
     Returns inline JSON data.
     """
-    # Verify ownership
+    # Shared workspace: any user can export any transcript
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -116,12 +112,11 @@ async def export_csv(
 
     Returns CSV file for download.
     """
-    # Verify ownership
+    # Shared workspace: any user can export any transcript
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )
@@ -162,12 +157,11 @@ async def export_gantt(
 
     Returns JSON data compatible with Gantt chart libraries.
     """
-    # Verify ownership
+    # Shared workspace: any user can export any transcript
     transcript = (
         db.query(Transcript)
         .filter(
             Transcript.id == transcript_id,
-            Transcript.user_id == current_user.id,
         )
         .first()
     )

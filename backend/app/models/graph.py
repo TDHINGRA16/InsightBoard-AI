@@ -84,7 +84,7 @@ class Graph(Base):
     # Relationships
     transcript: Mapped["Transcript"] = relationship(
         "Transcript",
-        back_populates="graphs",
+        back_populates="graph",
     )
 
     def __repr__(self) -> str:

@@ -133,8 +133,8 @@ class GraphService:
     def _compute_layout(
         self,
         graph: nx.DiGraph,
-        width: float = 1200,
-        height: float = 800,
+        width: float = 2000,  # Increased from 1200 for more spacing
+        height: float = 1200,  # Increased from 800 for more spacing
     ) -> Dict[str, Tuple[float, float]]:
         """
         Compute node positions for visualization.
@@ -156,9 +156,9 @@ class GraphService:
         if nx.is_directed_acyclic_graph(graph):
             return self._hierarchical_layout(graph, width, height)
 
-        # Fall back to spring layout
+        # Fall back to spring layout with more spacing
         try:
-            pos = nx.spring_layout(graph, k=2, iterations=50, seed=42)
+            pos = nx.spring_layout(graph, k=3, iterations=50, seed=42)  # k=3 for more spacing
             return {
                 node: (p[0] * width / 2 + width / 2, p[1] * height / 2 + height / 2)
                 for node, p in pos.items()
@@ -201,18 +201,23 @@ class GraphService:
                 nodes_by_level[level] = []
             nodes_by_level[level].append(node)
 
-        # Compute positions
+        # Compute positions with more generous spacing
         positions: Dict[str, Tuple[float, float]] = {}
         max_level = max(levels.values()) if levels else 0
+        
+        # Use fixed spacing rather than percentage-based
+        vertical_spacing = 200  # pixels between levels
+        horizontal_spacing = 350  # pixels between nodes in same level
+        start_x = 150
+        start_y = 100
 
         for level, nodes in nodes_by_level.items():
-            # X: spread evenly across level
-            # Y: based on level number
-
-            y = 100 + level * (height - 200) / max(max_level, 1)
+            y = start_y + level * vertical_spacing
 
             for i, node in enumerate(nodes):
-                x = 100 + (i + 1) * (width - 200) / (len(nodes) + 1)
+                # Center nodes in their level
+                total_width = (len(nodes) - 1) * horizontal_spacing
+                x = start_x + (width - total_width) / 2 + i * horizontal_spacing
                 positions[node] = (x, y)
 
         return positions

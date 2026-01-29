@@ -1,114 +1,58 @@
 """
-Authentication middleware and dependency for Supabase JWT verification.
+Authentication dependency for FastAPI routes.
+
+Verifies Supabase JWT from `Authorization: Bearer <token>` header and returns a
+minimal `CurrentUser` object.
 """
 
-from typing import Optional
-
-from fastapi import Depends, Request
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Depends, Header
+from sqlalchemy.orm import Session
 
 from app.core.exceptions import AuthenticationError
 from app.core.security import extract_user_from_token, verify_supabase_token
 from app.database import get_db
 from app.models.user import Profile
 from app.schemas.common import CurrentUser
-from sqlalchemy.orm import Session
-
-# HTTP Bearer token extractor
-security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
 ) -> CurrentUser:
     """
-    Dependency that validates JWT token and returns current user.
+    FastAPI dependency: returns authenticated user (Supabase JWT).
 
-    This dependency:
-    1. Extracts Bearer token from Authorization header
-    2. Verifies token using Supabase JWT secret
-    3. Upserts user profile if needed
-    4. Returns CurrentUser schema
-
-    Args:
-        request: FastAPI request object
-        credentials: Bearer token credentials
-        db: Database session
-
-    Returns:
-        CurrentUser: Authenticated user information
-
-    Raises:
-        AuthenticationError: If token is missing, invalid, or expired
+    Also ensures a `profiles` row exists for this user id.
     """
-    if not credentials:
-        raise AuthenticationError("Missing authorization header")
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise AuthenticationError("Missing Authorization bearer token")
 
-    token = credentials.credentials
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise AuthenticationError("Missing token")
 
-    # Verify token and extract payload
     payload = await verify_supabase_token(token)
-    user_info = extract_user_from_token(payload)
+    user = extract_user_from_token(payload)
 
-    # Upsert profile on first login
-    user_id = user_info["id"]
-    email = user_info.get("email")
+    user_id = user.get("id")
+    if not user_id:
+        raise AuthenticationError("Invalid token: missing subject")
 
+    # Ensure profile exists (best-effort)
     profile = db.query(Profile).filter(Profile.id == user_id).first()
-
-    if not profile and email:
-        # Check if email exists (handle stale local DB state where ID changed but email persists)
-        existing_profile = db.query(Profile).filter(Profile.email == email).first()
-        
-        if existing_profile:
-            if str(existing_profile.id) != str(user_id):
-                existing_profile.id = user_id
-                db.commit()
-                db.refresh(existing_profile)
-            profile = existing_profile
-        else:
-            # Create profile for new user
-            profile = Profile(
-                id=user_id,
-                email=email,
-                full_name=user_info.get("user_metadata", {}).get("full_name", ""),
-            )
-            db.add(profile)
-            db.commit()
-            db.refresh(profile)
+    if not profile:
+        profile = Profile(
+            id=user_id,
+            email=user.get("email") or "",
+            full_name=(user.get("user_metadata") or {}).get("full_name") or "",
+            avatar_url=(user.get("user_metadata") or {}).get("avatar_url"),
+        )
+        db.add(profile)
+        db.commit()
 
     return CurrentUser(
-        id=user_id,
-        email=email or "",
-        full_name=profile.full_name if profile else "",
+        id=str(user_id),
+        email=user.get("email"),
+        role=user.get("role") or "authenticated",
     )
 
-
-async def get_optional_user(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: Session = Depends(get_db),
-) -> Optional[CurrentUser]:
-    """
-    Optional authentication - returns None if no valid token.
-
-    Useful for endpoints that have different behavior for
-    authenticated vs anonymous users.
-
-    Args:
-        request: FastAPI request object
-        credentials: Optional Bearer token credentials
-        db: Database session
-
-    Returns:
-        Optional[CurrentUser]: User if authenticated, None otherwise
-    """
-    if not credentials:
-        return None
-
-    try:
-        return await get_current_user(request, credentials, db)
-    except AuthenticationError:
-        return None

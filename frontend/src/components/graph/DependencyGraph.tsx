@@ -1,14 +1,12 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useEffect, useRef } from "react";
 import ReactFlow, {
     Background,
     Controls,
     MiniMap,
     useNodesState,
     useEdgesState,
-    Connection,
-    Edge,
     Node,
     BackgroundVariant,
 } from "reactflow";
@@ -22,6 +20,7 @@ interface DependencyGraphProps {
     graphData: GraphData;
     criticalPath?: string[];
     onNodeClick?: (nodeId: string) => void;
+    onCompleteTask?: (nodeId: string) => void;
 }
 
 const nodeTypes = {
@@ -32,22 +31,40 @@ export function DependencyGraph({
     graphData,
     criticalPath = [],
     onNodeClick,
+    onCompleteTask,
 }: DependencyGraphProps) {
-    const { highlightCriticalPath, showMiniMap, setSelectedNodeId } =
+    const { highlightCriticalPath, showMiniMap, setSelectedNodeId, layoutDirection } =
         useGraphStore();
 
-    // Process nodes with critical path highlighting
+    // Track previous layout direction to detect changes
+    const prevLayoutRef = useRef(layoutDirection);
+
+    // Helper function to transform position based on layout direction
+    const transformPosition = useCallback((position: { x: number; y: number }, direction: "TB" | "LR") => {
+        if (direction === "LR") {
+            return { x: position.y, y: position.x };
+        }
+        return position;
+    }, []);
+
+    // Process nodes with critical path highlighting, complete callback, and layout transformation
     const initialNodes = useMemo(() => {
-        return graphData.nodes.map((node) => ({
-            ...node,
-            type: "taskNode",
-            data: {
-                ...node.data,
-                is_critical:
-                    highlightCriticalPath && criticalPath.includes(node.id),
-            },
-        }));
-    }, [graphData.nodes, criticalPath, highlightCriticalPath]);
+        return graphData.nodes.map((node) => {
+            const position = transformPosition(node.position, layoutDirection);
+
+            return {
+                ...node,
+                position,
+                type: "taskNode",
+                data: {
+                    ...node.data,
+                    is_critical:
+                        highlightCriticalPath && criticalPath.includes(node.id),
+                    onComplete: onCompleteTask,
+                },
+            };
+        });
+    }, [graphData.nodes, criticalPath, highlightCriticalPath, onCompleteTask, layoutDirection, transformPosition]);
 
     // Process edges with critical path styling
     const initialEdges = useMemo(() => {
@@ -70,18 +87,35 @@ export function DependencyGraph({
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-    const onConnect = useCallback(
-        (params: Connection) => {
-            const newEdge: Edge = {
-                id: `e${params.source}-${params.target}`,
-                source: params.source!,
-                target: params.target!,
-                style: { stroke: "#94a3b8", strokeWidth: 2 },
-            };
-            setEdges((eds) => [...eds, newEdge]);
-        },
-        [setEdges]
-    );
+    // Update nodes when graphData changes
+    // If layout direction changed, use new positions; otherwise preserve user-moved positions
+    useEffect(() => {
+        const layoutChanged = prevLayoutRef.current !== layoutDirection;
+        prevLayoutRef.current = layoutDirection;
+
+        if (layoutChanged) {
+            // Layout direction changed - use new calculated positions (don't preserve old positions)
+            setNodes(initialNodes);
+        } else {
+            // Normal update - preserve user-moved positions
+            setNodes((currentNodes) => {
+                const positionMap = new Map<string, { x: number; y: number }>();
+                currentNodes.forEach((node) => {
+                    positionMap.set(node.id, node.position);
+                });
+
+                return initialNodes.map((node) => ({
+                    ...node,
+                    position: positionMap.get(node.id) ?? node.position,
+                }));
+            });
+        }
+    }, [initialNodes, setNodes, layoutDirection]);
+
+    // Update edges when graphData changes
+    useEffect(() => {
+        setEdges(initialEdges);
+    }, [initialEdges, setEdges]);
 
     const handleNodeClick = useCallback(
         (_: any, node: Node) => {
@@ -98,27 +132,34 @@ export function DependencyGraph({
                 edges={edges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
-                onConnect={onConnect}
                 onNodeClick={handleNodeClick}
                 nodeTypes={nodeTypes}
+                // Disable connections and edge editing
+                nodesConnectable={false}
+                edgesUpdatable={false}
+                connectOnClick={false}
+                // View settings
                 fitView
-                fitViewOptions={{ padding: 0.2 }}
+                fitViewOptions={{ padding: 0.3, maxZoom: 0.9 }}
                 minZoom={0.1}
-                maxZoom={2}
+                maxZoom={1.5}
+                defaultViewport={{ x: 0, y: 0, zoom: 0.7 }}
                 defaultEdgeOptions={{
                     type: "smoothstep",
                 }}
             >
                 <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-                <Controls />
+                <Controls showZoom showFitView showInteractive={false} />
                 {showMiniMap && (
                     <MiniMap
                         nodeStrokeWidth={3}
                         nodeColor={(node) => {
+                            if (node.data?.status === "completed") return "#22c55e";
                             if (node.data?.is_critical) return "#ef4444";
                             return "#3b82f6";
                         }}
                         maskColor="rgb(0, 0, 0, 0.1)"
+                        position="bottom-right"
                     />
                 )}
             </ReactFlow>
