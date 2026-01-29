@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useDropzone } from "react-dropzone";
 import { Upload, File, X, AlertCircle, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function FileUpload({
     maxSizeMB = 50,
     acceptedTypes = [".txt", ".pdf"],
 }: FileUploadProps) {
+    const queryClient = useQueryClient();
     const [file, setFile] = useState<File | null>(null);
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -90,6 +92,7 @@ export function FileUpload({
 
             const transcriptId = response.data?.data?.id as string | undefined;
             const isDuplicate = !!response.data?.is_duplicate;
+            const transcriptObj = response.data?.data;
 
             if (!transcriptId) {
                 throw new Error("Upload succeeded but transcript id missing");
@@ -100,6 +103,29 @@ export function FileUpload({
                 onDuplicate?.(transcriptId);
             } else {
                 toast.success("Transcript uploaded successfully!");
+                // Optimistically add new transcript to cache so lists reflect immediately
+                try {
+                    if (transcriptObj) {
+                        queryClient.setQueryData(["transcripts"], (old: any) => {
+                            if (!old) return old;
+                            const existing = (old.data || []).filter((t: any) => t.id !== transcriptObj.id);
+                            const newItem = {
+                                id: transcriptObj.id,
+                                filename: transcriptObj.filename,
+                                file_type: transcriptObj.file_type,
+                                size_bytes: transcriptObj.size_bytes,
+                                status: transcriptObj.status,
+                                created_at: transcriptObj.created_at,
+                                task_count: 0,
+                            };
+                            return { ...old, data: [newItem, ...existing], total: (old.total || 0) + 1 };
+                        });
+                        queryClient.invalidateQueries(["transcripts"]);
+                    }
+                } catch (e) {
+                    // ignore cache update errors
+                }
+
                 onUploadSuccess?.(transcriptId);
             }
 
