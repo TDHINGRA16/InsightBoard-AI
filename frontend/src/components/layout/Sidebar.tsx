@@ -27,7 +27,7 @@ export default function Sidebar() {
             {/* Logo */}
             <div className="px-4 py-5 flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-primary" />
-                <span className="text-base font-semibold tracking-tight">InsightBoard</span>
+                <span className="text-base font-semibold tracking-tight">Explore</span>
             </div>
 
             {/* Navigation */}

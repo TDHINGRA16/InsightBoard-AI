@@ -183,9 +183,17 @@ class DependencyService:
         Returns:
             List[Dependency]: All dependencies in transcript
         """
-        # Deprecated: functionality replaced by build_dependency_graph()
-        raise DeprecationWarning(
-            "list_dependencies_for_transcript() is deprecated. Use build_dependency_graph() instead."
+        # Get dependencies for all tasks in the given transcript.
+        # Join through tasks to avoid fetching task IDs separately.
+        return (
+            self.db.query(Dependency)
+            .join(Task, Dependency.task_id == Task.id)
+            .filter(Task.transcript_id == transcript_id)
+            .options(
+                joinedload(Dependency.task),
+                joinedload(Dependency.depends_on_task),
+            )
+            .all()
         )
 
     def list_dependencies_for_user(self, user_id: str) -> List[Dependency]:
