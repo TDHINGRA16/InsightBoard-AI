@@ -175,6 +175,28 @@ Output:
   ]
 }}
 
+Example 5: Circular Dependency (Capture It)
+Input: "Backend needs frontend requirements; frontend needs backend endpoint"
+Output:
+{{
+  "tasks": [
+    {{"title": "Define Frontend Requirements", ...}},
+    {{"title": "Build Backend Endpoint", ...}}
+  ],
+  "dependencies": [
+    {{
+      "task_title": "Build Backend Endpoint",
+      "depends_on_title": "Define Frontend Requirements",
+      "type": "blocks"
+    }},
+    {{
+      "task_title": "Define Frontend Requirements",
+      "depends_on_title": "Build Backend Endpoint",
+      "type": "blocks"
+    }}
+  ]
+}}
+
 ═══════════════════════════════════════════════════════════
 PRIORITY MAPPING
 ═══════════════════════════════════════════════════════════
@@ -400,7 +422,7 @@ Before returning JSON, verify:
 □ All dates are in ISO 8601 format or null
 □ All priorities are one of: low, medium, high, critical
 □ All estimated_hours are positive integers
-□ Dependencies form a DAG (no circular dependencies)
+□ Dependencies reflect the transcript even if they are circular
 □ JSON is valid and parseable
 
 ═══════════════════════════════════════════════════════════

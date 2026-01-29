@@ -57,7 +57,7 @@ export function SignupForm() {
                 return;
             }
 
-            toast.success("Account created! Check your email to confirm.");
+            toast.success("Account created. You can now sign in.");
             router.push("/login");
         } catch (error: any) {
             toast.error(error.message || "Something went wrong");
