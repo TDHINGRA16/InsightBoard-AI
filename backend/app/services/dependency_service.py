@@ -469,8 +469,8 @@ class DependencyService:
             return None
 
         for dep_data in dependencies_data:
-            task_title = dep_data.get("task_title", "")
-            depends_on_title = dep_data.get("depends_on_title", "")
+            task_title = (dep_data.get("task_title", "") or "").lower().strip()
+            depends_on_title = (dep_data.get("depends_on_title", "") or "").lower().strip()
 
             # Look up IDs with fuzzy matching
             task_id = find_task_id(task_title)
