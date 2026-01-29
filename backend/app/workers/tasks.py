@@ -6,6 +6,8 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
+import networkx as nx
+
 from app.core.logging import get_logger
 from app.database import SessionLocal
 from app.models.job import Job, JobStatus, JobType
@@ -162,18 +164,39 @@ def analyze_transcript_job(
         # Progress: Dependencies created
         _update_progress(db, job_id, 80)
 
-        # Validate DAG
-        is_valid, cycle = dependency_service.validate_dag(transcript_id)
+        # Validate DAG using a lightweight graph build; we will compute full cycle
+        # diagnostics after building the main graph below.
+        is_valid, first_cycle = dependency_service.validate_dag(transcript_id)
 
-        cycle_task_ids = []
+        # Build graph and compute metrics
+        graph_service = GraphService(db)
+        nx_graph = dependency_service.build_dependency_graph(transcript_id)
+
+        # Detect all cycles (if any) on the full graph so we can:
+        # - Mark affected tasks as BLOCKED
+        # - Return detailed cycle diagnostics in the result payload
+        cycles: list[list[str]] = []
+        cycle_task_ids: list[UUID] = []
         blocked_task_count = 0
-        if not is_valid:
-            logger.warning(f"Cyclic dependencies detected: {cycle}")
-            # Mark tasks participating in the cycle as BLOCKED in DB.
-            # (We keep transcript analysis as "analyzed" but include diagnostics.)
-            if cycle:
-                try:
-                    cycle_task_ids = [UUID(task_id) for task_id in cycle]
+
+        if not is_valid and nx_graph.nodes():
+            try:
+                # Collect all simple cycles; fall back to first_cycle from validate_dag
+                cycles = list(nx.simple_cycles(nx_graph))
+                if not cycles and first_cycle:
+                    cycles = [first_cycle]
+
+                # Union of all node IDs that participate in at least one cycle
+                cycle_node_ids = {node_id for cycle in cycles for node_id in cycle}
+
+                if cycle_node_ids:
+                    cycle_task_ids = [UUID(task_id) for task_id in cycle_node_ids]
+                    logger.warning(
+                        "Cyclic dependencies detected in transcript %s: %s",
+                        transcript_id,
+                        cycles,
+                    )
+
                     blocked_task_count = (
                         db.query(Task)
                         .filter(
@@ -186,13 +209,9 @@ def analyze_transcript_job(
                         )
                     )
                     db.commit()
-                except Exception as e:
-                    logger.warning(f"Failed to mark cycle tasks as blocked: {e}")
-                    db.rollback()
-
-        # Build graph and compute metrics
-        graph_service = GraphService(db)
-        nx_graph = dependency_service.build_dependency_graph(transcript_id)
+            except Exception as e:
+                logger.warning(f"Failed to compute cycle diagnostics: {e}")
+                db.rollback()
 
         critical_path = []
         critical_path_length = 0
@@ -221,6 +240,22 @@ def analyze_transcript_job(
         # Progress: Graph built
         _update_progress(db, job_id, 90)
 
+        # Build cycle diagnostics payload for API consumers
+        cycles_payload = []
+        if cycles:
+            for idx, path in enumerate(cycles, start=1):
+                unique_nodes = list(dict.fromkeys(path))  # preserve order, de-duplicate
+                cycles_payload.append(
+                    {
+                        "id": f"cycle_{idx}",
+                        "type": "CIRCULAR_DEPENDENCY",
+                        "path": path,
+                        "affected_tasks": unique_nodes,
+                        "cycle_length": len(unique_nodes),
+                        "severity": "HIGH",
+                    }
+                )
+
         # Build result summary
         result = {
             "task_count": len(created_tasks),
@@ -228,9 +263,10 @@ def analyze_transcript_job(
             "critical_path_length": critical_path_length,
             "is_valid_dag": is_valid,
             "warning": None if is_valid else "Cyclic dependencies detected",
-            "cycle": cycle if not is_valid else None,
+            "cycle": first_cycle if not is_valid else None,
             "cycle_task_ids": [str(tid) for tid in cycle_task_ids] if cycle_task_ids else [],
             "blocked_task_count": blocked_task_count,
+            "cycles": cycles_payload,
         }
 
         # Cache analysis result
