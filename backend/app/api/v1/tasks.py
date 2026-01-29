@@ -13,6 +13,7 @@ from app.core.exceptions import NotFoundError
 from app.dependencies import AuthUser, DbSession
 from app.models.audit_log import AuditAction, ResourceType
 from app.models.task import Task, TaskPriority, TaskStatus
+from app.models.dependency import Dependency
 from app.models.transcript import Transcript
 from app.schemas.common import BaseResponse
 from app.schemas.task import (
@@ -25,6 +26,7 @@ from app.schemas.task import (
 )
 from app.services.audit_service import AuditService
 from app.services.webhook_service import trigger_task_completed, trigger_task_created
+from app.services.cache_service import cache_service
 
 router = APIRouter()
 
@@ -49,8 +51,15 @@ async def list_tasks(
 
     Filter by transcript_id, status, priority, or assignee.
     """
-    # Shared workspace: show ALL tasks
-    query = db.query(Task).join(Transcript)
+    # Shared workspace: show ALL tasks with eager loading to fix N+1 queries
+    query = (
+        db.query(Task)
+        .join(Transcript)
+        .options(
+            joinedload(Task.dependencies),
+            joinedload(Task.dependents),
+        )
+    )
 
     if transcript_id:
         query = query.filter(Task.transcript_id == transcript_id)
@@ -147,6 +156,9 @@ async def create_task(
     db.add(task)
     db.commit()
     db.refresh(task)
+
+    # Invalidate graph cache
+    cache_service.invalidate_graph(str(task.transcript_id))
 
     # Audit log
     audit_service = AuditService(db)
@@ -379,8 +391,14 @@ async def delete_task(
         old_values={"title": task.title},
     )
 
+    # Capture transcript id before delete for cache invalidation
+    transcript_id = str(task.transcript_id)
+
     db.delete(task)
     db.commit()
+
+    # Invalidate graph cache
+    cache_service.invalidate_graph(transcript_id)
 
     return BaseResponse(
         success=True,
@@ -403,25 +421,36 @@ async def get_related_tasks(
     """
     task = (
         db.query(Task)
-        .options(joinedload(Task.dependencies), joinedload(Task.dependents))
+        .options(
+            joinedload(Task.dependencies).joinedload(Dependency.depends_on_task),
+            joinedload(Task.dependents).joinedload(Dependency.task),
+        )
         .filter(Task.id == task_id)
         .first()
     )
     if not task:
         raise NotFoundError("Task", task_id)
 
-    related_ids = {str(d.depends_on_task_id) for d in task.dependencies} | {
-        str(d.task_id) for d in task.dependents
-    }
-
-    if not related_ids:
-        return BaseResponse(success=True, data=[])
-
-    related = db.query(Task).filter(Task.id.in_(list(related_ids))).all()
-    return BaseResponse(
-        success=True,
-        data=[{"id": str(t.id), "title": t.title, "status": t.status} for t in related],
-    )
+    # Use already-loaded relationships instead of second query
+    related_data = []
+    
+    for dep in task.dependencies:
+        if dep.depends_on_task:
+            related_data.append({
+                "id": str(dep.depends_on_task_id),
+                "title": dep.depends_on_task.title,
+                "status": dep.depends_on_task.status.value,
+            })
+    
+    for dep in task.dependents:
+        if dep.task:
+            related_data.append({
+                "id": str(dep.task_id),
+                "title": dep.task.title,
+                "status": dep.task.status.value,
+            })
+    
+    return BaseResponse(success=True, data=related_data)
 
 
 @router.post(
@@ -441,21 +470,19 @@ async def complete_task(
     """
     task = (
         db.query(Task)
-        .options(joinedload(Task.dependencies))
+        .options(joinedload(Task.dependencies).joinedload(Dependency.depends_on_task))
         .filter(Task.id == task_id)
         .first()
     )
     if not task:
         raise NotFoundError("Task", task_id)
 
-    # Block if any dependency task isn't completed
+    # Block if any dependency task isn't completed (use already-loaded relationships)
     if task.dependencies:
-        dep_ids = [d.depends_on_task_id for d in task.dependencies]
-        incomplete = (
-            db.query(Task)
-            .filter(Task.id.in_(dep_ids), Task.status != TaskStatus.COMPLETED)
-            .all()
-        )
+        incomplete = [
+            d.depends_on_task for d in task.dependencies
+            if d.depends_on_task and d.depends_on_task.status != TaskStatus.COMPLETED
+        ]
         if incomplete:
             return BaseResponse(
                 success=False,
@@ -468,6 +495,8 @@ async def complete_task(
         task.status = TaskStatus.COMPLETED
         db.commit()
         db.refresh(task)
+        # Invalidate graph cache
+        cache_service.invalidate_graph(str(task.transcript_id))
 
         # Audit + webhook
         audit_service = AuditService(db)

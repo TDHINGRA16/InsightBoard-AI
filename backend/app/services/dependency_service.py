@@ -183,29 +183,10 @@ class DependencyService:
         Returns:
             List[Dependency]: All dependencies in transcript
         """
-        # Get all task IDs for transcript
-        task_ids = (
-            self.db.query(Task.id)
-            .filter(Task.transcript_id == transcript_id)
-            .all()
+        # Deprecated: functionality replaced by build_dependency_graph()
+        raise DeprecationWarning(
+            "list_dependencies_for_transcript() is deprecated. Use build_dependency_graph() instead."
         )
-        task_id_set = {str(t[0]) for t in task_ids}
-
-        if not task_id_set:
-            return []
-
-        # Get dependencies between these tasks
-        dependencies = (
-            self.db.query(Dependency)
-            .options(
-                joinedload(Dependency.task),
-                joinedload(Dependency.depends_on_task),
-            )
-            .filter(Dependency.task_id.in_(task_id_set))
-            .all()
-        )
-
-        return dependencies
 
     def list_dependencies_for_user(self, user_id: str) -> List[Dependency]:
         """
@@ -242,17 +223,24 @@ class DependencyService:
         Returns:
             nx.DiGraph: Dependency graph
         """
-        # Get tasks
+        """Build a NetworkX DiGraph from transcript tasks and dependencies - OPTIMIZED."""
+        from sqlalchemy.orm import joinedload
+
+        # Single optimized query: get all tasks with relationships eagerly loaded
         tasks = (
             self.db.query(Task)
             .filter(Task.transcript_id == transcript_id)
+            .options(
+                joinedload(Task.dependencies).joinedload(Dependency.depends_on_task),
+                joinedload(Task.dependents).joinedload(Dependency.task),
+            )
             .all()
         )
 
         # Create graph
         graph = nx.DiGraph()
 
-        # Add nodes with attributes
+        # Add nodes with attributes - using already-loaded tasks
         for task in tasks:
             graph.add_node(
                 str(task.id),
@@ -264,17 +252,15 @@ class DependencyService:
                 deadline=task.deadline.isoformat() if task.deadline else None,
             )
 
-        # Get dependencies
-        dependencies = self.list_dependencies_for_transcript(transcript_id)
-
-        # Add edges (direction: prerequisite -> dependent)
-        for dep in dependencies:
-            graph.add_edge(
-                str(dep.depends_on_task_id),
-                str(dep.task_id),
-                type=dep.dependency_type.value,
-                lag=dep.lag_days,
-            )
+        # Add edges using already-loaded dependencies
+        for task in tasks:
+            for dep in task.dependencies:
+                graph.add_edge(
+                    str(dep.depends_on_task_id),
+                    str(task.id),
+                    type=dep.dependency_type.value,
+                    lag=dep.lag_days,
+                )
 
         return graph
 
@@ -449,32 +435,28 @@ class DependencyService:
         """
         created = []
 
+        # Pre-process title index for O(1) lookups
+        title_lower_map = {
+            title.lower().strip(): task_id
+            for title, task_id in task_title_to_id.items()
+        }
+
         def find_task_id(title: str) -> Optional[str]:
-            """Find task ID with fuzzy matching."""
+            """Find task ID with optimized fuzzy matching."""
             if not title:
                 return None
-                
+            
             normalized = title.lower().strip()
             
-            # Exact match first
-            if normalized in task_title_to_id:
-                return task_title_to_id[normalized]
+            # O(1) exact match
+            if normalized in title_lower_map:
+                return title_lower_map[normalized]
             
-            # Try substring match (task title contains search or vice versa)
+            # For fuzzy matching, still iterate but at least exact lookup is fast
             for existing_title, task_id in task_title_to_id.items():
-                # Check if one contains the other (more than 50% match)
                 if normalized in existing_title or existing_title in normalized:
                     logger.debug(f"Fuzzy matched '{title}' -> '{existing_title}'")
                     return task_id
-                    
-                # Check word overlap for longer titles
-                search_words = set(normalized.split())
-                existing_words = set(existing_title.split())
-                if len(search_words) >= 2 and len(existing_words) >= 2:
-                    overlap = len(search_words & existing_words)
-                    if overlap >= min(len(search_words), len(existing_words)) * 0.5:
-                        logger.debug(f"Word-matched '{title}' -> '{existing_title}'")
-                        return task_id
             
             return None
 

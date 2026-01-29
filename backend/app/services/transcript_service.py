@@ -162,8 +162,9 @@ class TranscriptService:
         Returns:
             Tuple[List[Transcript], int]: (transcripts, total_count)
         """
-        # Shared workspace: list ALL transcripts
+        # Shared workspace: list ALL transcripts with eager loading to fix N+1 queries
         query = self.db.query(Transcript)
+        query = query.options(joinedload(Transcript.tasks))
 
         if status:
             query = query.filter(Transcript.status == status)

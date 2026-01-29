@@ -22,6 +22,7 @@ from app.schemas.dependency import (
 )
 from app.services.audit_service import AuditService
 from app.services.dependency_service import DependencyService
+from app.services.cache_service import cache_service
 
 router = APIRouter()
 
@@ -130,6 +131,12 @@ async def create_dependency(
         },
     )
 
+    # Invalidate graph cache for the affected transcript
+    try:
+        cache_service.invalidate_graph(str(task.transcript_id))
+    except Exception:
+        pass
+
     return BaseResponse(
         success=True,
         data=DependencyResponse(
@@ -172,7 +179,16 @@ async def delete_dependency(
         raise NotFoundError("Dependency", dependency_id)
 
     service = DependencyService(db)
+    # Load related task to get transcript id for cache invalidation
+    related_task = db.query(Task).filter(Task.id == dependency.task_id).first()
     service.delete_dependency(dependency_id)
+
+    # Invalidate graph cache for the affected transcript
+    try:
+        if related_task:
+            cache_service.invalidate_graph(str(related_task.transcript_id))
+    except Exception:
+        pass
 
     # Audit log
     audit_service = AuditService(db)
