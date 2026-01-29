@@ -4,6 +4,7 @@ Export API endpoints - Export data in various formats.
 
 from fastapi import APIRouter
 from fastapi.responses import Response
+import json
 
 from app.core.exceptions import NotFoundError
 from app.dependencies import AuthUser, DbSession
@@ -95,7 +96,8 @@ async def export_json(
         include_graph=include_graph,
     )
 
-    return result["data"]
+    # Ensure stable JSON serialization (avoid returning raw objects)
+    return Response(content=json.dumps(result["data"], default=str), media_type="application/json")
 
 
 @router.get(
@@ -179,4 +181,5 @@ async def export_gantt(
         include_graph=False,
     )
 
-    return result["data"]
+    # Return JSON string to avoid frontend receiving non-serializable objects
+    return Response(content=json.dumps(result["data"], default=str), media_type="application/json")

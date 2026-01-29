@@ -15,6 +15,11 @@ import { TaskStatus } from "@/types";
 import { toast } from "@/lib/toast";
 import { RefreshCw, ArrowRightLeft, ArrowUpDown } from "lucide-react";
 
+type GraphApiData = {
+  nodes?: any[];
+  edges?: any[];
+};
+
 export default function GraphPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -49,8 +54,36 @@ export default function GraphPage() {
       const res = await apiClient.post(`/tasks/${taskId}/complete`);
       return res.data;
     },
+    onMutate: async (taskId: string) => {
+      // Optimistically mark the node as completed so dependents unlock instantly (no refetch needed).
+      await queryClient.cancelQueries({ queryKey: ["graph", id] });
+
+      const previousGraph = queryClient.getQueryData<GraphApiData>(["graph", id]);
+
+      if (previousGraph?.nodes?.length) {
+        const nextNodes = previousGraph.nodes.map((n: any) => {
+          if (n?.id !== taskId) return n;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              status: TaskStatus.COMPLETED,
+            },
+          };
+        });
+
+        queryClient.setQueryData(["graph", id], {
+          ...previousGraph,
+          nodes: nextNodes,
+        });
+      }
+
+      return { previousGraph };
+    },
     onSuccess: (response, taskId) => {
       if (response?.success === false) {
+        // Server rejected completion (e.g. still blocked). Roll back optimistic update.
+        queryClient.invalidateQueries({ queryKey: ["graph", id] });
         // Task is blocked
         toast.error(response?.message || "Task is blocked by dependencies");
         return;
@@ -67,7 +100,11 @@ export default function GraphPage() {
       refetch();
       refetchCriticalPath();
     },
-    onError: (error: any) => {
+    onError: (error: any, _taskId, context: any) => {
+      // Roll back optimistic update on network/server errors.
+      if (context?.previousGraph) {
+        queryClient.setQueryData(["graph", id], context.previousGraph);
+      }
       toast.error(error?.response?.data?.detail || "Failed to complete task");
     },
   });

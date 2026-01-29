@@ -4,6 +4,7 @@ Background tasks for RQ workers.
 
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 from app.core.logging import get_logger
 from app.database import SessionLocal
@@ -164,13 +165,30 @@ def analyze_transcript_job(
         # Validate DAG
         is_valid, cycle = dependency_service.validate_dag(transcript_id)
 
+        cycle_task_ids = []
+        blocked_task_count = 0
         if not is_valid:
             logger.warning(f"Cyclic dependencies detected: {cycle}")
-            # Store cycle info but don't fail
-            transcript.analysis_result = {
-                "warning": "Cyclic dependencies detected",
-                "cycle": cycle,
-            }
+            # Mark tasks participating in the cycle as BLOCKED in DB.
+            # (We keep transcript analysis as "analyzed" but include diagnostics.)
+            if cycle:
+                try:
+                    cycle_task_ids = [UUID(task_id) for task_id in cycle]
+                    blocked_task_count = (
+                        db.query(Task)
+                        .filter(
+                            Task.transcript_id == transcript_id,
+                            Task.id.in_(cycle_task_ids),
+                        )
+                        .update(
+                            {Task.status: TaskStatus.BLOCKED},
+                            synchronize_session=False,
+                        )
+                    )
+                    db.commit()
+                except Exception as e:
+                    logger.warning(f"Failed to mark cycle tasks as blocked: {e}")
+                    db.rollback()
 
         # Build graph and compute metrics
         graph_service = GraphService(db)
@@ -210,6 +228,9 @@ def analyze_transcript_job(
             "critical_path_length": critical_path_length,
             "is_valid_dag": is_valid,
             "warning": None if is_valid else "Cyclic dependencies detected",
+            "cycle": cycle if not is_valid else None,
+            "cycle_task_ids": [str(tid) for tid in cycle_task_ids] if cycle_task_ids else [],
+            "blocked_task_count": blocked_task_count,
         }
 
         # Cache analysis result
