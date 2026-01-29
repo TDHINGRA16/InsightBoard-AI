@@ -32,6 +32,8 @@ InsightBoard AI is a transcript-to-task dependency engine. Upload a project tran
 ### Deployment
 
 - **Docker** (separate `frontend/Dockerfile` and `backend/Dockerfile`).
+ - **Docker** (separate `frontend/Dockerfile` and `backend/Dockerfile`).
+ - **Self-hosting / Coolify**: Backend, frontend, PostgreSQL database, and Redis were self-hosted and deployed using Coolify.
 
 ## Cycle Detection Algorithm (Level 1/Integrity Requirement)
 
