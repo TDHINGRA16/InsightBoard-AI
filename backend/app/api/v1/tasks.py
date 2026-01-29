@@ -310,15 +310,18 @@ async def update_task(
     db.commit()
     db.refresh(task)
 
-    # Audit log
-    audit_service = AuditService(db)
-    audit_service.log_update(
-        user_id=current_user.id,
-        resource_type=ResourceType.TASK,
-        resource_id=str(task.id),
-        old_values={"status": old_status.value},
-        new_values={"status": task.status.value},
-    )
+    # Audit log (wrap in try-except to prevent failures from blocking update)
+    try:
+        audit_service = AuditService(db)
+        audit_service.log_update(
+            user_id=current_user.id,
+            resource_type=ResourceType.TASK,
+            resource_id=str(task.id),
+            old_values={"status": old_status.value},
+            new_values={"status": task.status.value},
+        )
+    except Exception:
+        pass  # Audit logging failure shouldn't block task update
 
     # Trigger webhook if completed
     if task.status == TaskStatus.COMPLETED and old_status != TaskStatus.COMPLETED:
@@ -330,7 +333,7 @@ async def update_task(
                 task.title,
             )
         except Exception:
-            pass
+            pass  # Webhook failure shouldn't block task completion
 
     return TaskSingleResponse(
         success=True,
@@ -492,24 +495,34 @@ async def complete_task(
 
     if task.status != TaskStatus.COMPLETED:
         old_status = task.status
+        # Capture transcript_id before commit to avoid session issues
+        transcript_id = str(task.transcript_id)
         task.status = TaskStatus.COMPLETED
         db.commit()
         db.refresh(task)
-        # Invalidate graph cache
-        cache_service.invalidate_graph(str(task.transcript_id))
+        
+        # Invalidate graph cache (use captured transcript_id)
+        try:
+            cache_service.invalidate_graph(transcript_id)
+        except Exception:
+            pass  # Cache invalidation failure shouldn't block task completion
 
-        # Audit + webhook
-        audit_service = AuditService(db)
-        audit_service.log_update(
-            user_id=current_user.id,
-            resource_type=ResourceType.TASK,
-            resource_id=str(task.id),
-            old_values={"status": old_status.value},
-            new_values={"status": task.status.value},
-        )
+        # Audit + webhook (wrap in try-except to prevent failures from blocking completion)
+        try:
+            audit_service = AuditService(db)
+            audit_service.log_update(
+                user_id=current_user.id,
+                resource_type=ResourceType.TASK,
+                resource_id=str(task.id),
+                old_values={"status": old_status.value},
+                new_values={"status": task.status.value},
+            )
+        except Exception:
+            pass  # Audit logging failure shouldn't block task completion
+        
         try:
             trigger_task_completed(db, current_user.id, str(task.id), task.title)
         except Exception:
-            pass
+            pass  # Webhook failure shouldn't block task completion
 
     return BaseResponse(success=True, data={"id": str(task.id), "status": task.status})
